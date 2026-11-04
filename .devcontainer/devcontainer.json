@@ -2,8 +2,12 @@
   "name": "Epic Freebies Helper",
   "image": "mcr.microsoft.com/playwright:v1.53.0-noble",
   "features": {
-    "ghcr.io/devcontainers/features/python:1": {"version": "3.12", "installTools": true, "toolsToInstall": "uv,ruff,black"},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12",
+      "installTools": true,
+      "toolsToInstall": "uv,ruff,black"
+    },
     "ghcr.io/devcontainers/features/git:1": {}
   },
-  "postCreateCommand": "uv sync --frozen"
+  "postCreateCommand": "uv sync --frozen && uv run --frozen playwright install --with-deps firefox"
 }

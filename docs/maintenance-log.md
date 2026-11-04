@@ -1507,3 +1507,15 @@
 - 改动文件：`app/settings.py`、`pyproject.toml`、`uv.lock`、`docs/maintenance-log.md`。
 - 处理结果：启动时加载根目录 `.env` 且不覆盖已有进程环境，统一账号/模型和可选服务的配置来源；显式声明原已存在的 `python-dotenv` 依赖。未发送真实通知。
 - 验证：[Actions 41839849101](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41839849101) 的官方视觉/JSON、归一化坐标思考请求、依赖协议、Camoufox/Firefox 安装均通过；此次 `preflight_only=true`，没有登录或领取。冻结依赖同步、Node 语法与 Compose 配置检查通过。本机 Docker 引擎不可用，未构建镜像；遵循 AGENTS.md 未执行测试套件。
+
+### 2026-11-04 Docker 构建验证发现并修复 Firefox 修订号不匹配
+
+- 症状：Docker 引擎启动后，镜像构建和应用导入通过，但容器检查发现 Playwright 所需 Firefox 可执行文件不存在，降级路径会启动失败。
+- 根因判断：`mcr.microsoft.com/playwright:v1.53.0-noble` 内含 Node 发行版 Firefox 1487，而锁定的 Python Playwright 1.53.0 要求 Firefox 1488；相同标签版本不能替代具体二进制检查。
+- 改动文件：`docker/Dockerfile`、`.devcontainer/devcontainer.json`、`docs/maintenance-log.md`。
+- 处理结果：Docker 构建和 Dev Container 初始化显式执行锁定 Python Playwright 的 `install --with-deps firefox`，确保降级浏览器与驱动一致；保留固定版本 Camoufox。未注入用户密钥到构建过程或镜像。
+- 验证：已完成首轮 linux/amd64 构建、应用配置导入及浏览器路径检查；修复后重新构建并检查所需可执行文件。真实领取流程仍由 Actions 独立验证；未执行测试套件。
+
+- 同步整理：仅环境/API 预检不会创建领取日志或截图，因此工作流在 `preflight_only=true` 时跳过产物打包与上传，避免预期内的空文件警告；正式领取仍始终收集产物。
+
+- 修复后结果：linux/amd64 镜像 `epic-freebies-helper:deepseek-check` 已重新构建成功（镜像摘要 `sha256:d2b2a7dce60872e809fd7397ace8c8452cad11e4a89dd5fe729dae980ae150d4`）；容器内应用/配置导入成功，确认 Firefox 1488 可执行文件存在且 `--version` 输出 Firefox 139.0，固定 Camoufox 可执行文件存在。构建与检查均未携带 API/Epic 密钥，未在本地执行真实登录或测试套件。同时更新 AGENTS.md 的现行代码路径并移除废弃 Celery 忽略项。

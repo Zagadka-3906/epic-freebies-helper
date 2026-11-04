@@ -164,11 +164,11 @@ jobs:
           fi
 
       - name: Package runtime artifacts
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         run: python3 scripts/package_runtime.py
 
       - name: Upload runtime artifacts
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         uses: actions/upload-artifact@v7
         with:
           name: epic-runtime-${{ github.run_id }}
@@ -176,7 +176,7 @@ jobs:
           retention-days: 7
 
       - name: Upload log artifacts
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         uses: actions/upload-artifact@v7
         with:
           name: epic-logs-${{ github.run_id }}
@@ -184,7 +184,7 @@ jobs:
           retention-days: 7
 
       - name: Upload screenshot artifacts
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         uses: actions/upload-artifact@v7
         with:
           name: epic-screenshots-${{ github.run_id }}
