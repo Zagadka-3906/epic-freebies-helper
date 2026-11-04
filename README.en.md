@@ -10,6 +10,8 @@ The requested model is **DeepSeek-V4.1-Flash-1017**. Its current official API ID
 
 All challenge stages use this model. Spatial requests enable low-effort thinking. Each request has a 45-second deadline and at most two attempts; sign-in defaults to three attempts. Official API usage is billed. A stronger model cannot guarantee that challenges or Epic risk checks will pass.
 
+> Latest verification (2026-11-04): API preflight, Docker build and an actual hCaptcha challenge passed, but Epic subsequently rejected the login verification response. No successful game claim has been confirmed. See the [bounded run](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41843219304) and [maintenance history](docs/maintenance-log.md).
+
 ## GitHub Actions
 
 Add these under **Settings → Secrets and variables → Actions → Secrets**:

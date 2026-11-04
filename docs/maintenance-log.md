@@ -1527,3 +1527,17 @@
 - 改动文件：`app/extensions/deepseek_provider.py`、`app/services/epic_authorization_service.py`、Actions 工作流、README/开发说明、`docs/maintenance-log.md`。
 - 处理结果：空间请求输出上限调整为 8192 tokens，其他分类请求 1024 tokens，仍保留每次 45 秒、最多两次请求限制；登录观察到该已知错误时立即退出当前尝试，由现有外层有界流程刷新页面。手动 Actions 新增 `auth_attempts` 的 1/3 次选项，便于限制付费排障消耗。
 - 验证：原运行有 6 次空间响应成功解析/映射、一次 hCaptcha `success`，没有确认登录或领取；三类诊断产物上传成功。新改动先完成静态检查，随后只做一次登录尝试的真实验证；未执行测试套件。
+
+- 容器缓存整理：依赖层只复制 `pyproject.toml`/`uv.lock`，避免普通 README 修改触发浏览器重新安装；许可证在应用层单独复制，保留镜像中的来源许可文本。重新构建用于检查最后的应用改动。
+
+### 2026-11-04 单次真实验证确认模型可通过挑战、Epic 仍拒绝登录
+
+- 症状：[Actions 41843219304](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41843219304) 选择 `auth_attempts=1`，最终仍为 failure。
+- 根因判断：两轮 ThreeIconSelection 响应分别约 24.5 秒/5657 总 tokens、6.1 秒/1563 总 tokens，严格 JSON 解析和坐标映射成功；14:02:18 UTC hCaptcha 明确返回 `success`，随后 Epic 页面显示 `Incorrect response. Please refresh the page.`。因此当前阻塞在 Epic 接受登录验证响应这一环节，不能归因于 API Key、模型接口不可用或本次模型输出截断；也不能仅凭该提示断定具体网络/IP、浏览器指纹或 token 原因。
+- 改动文件：`docs/maintenance-log.md`；保留上一条输出预算与页面错误识别修复。
+- 处理结果：新版空间输出预算在实际题图中可用，本次未出现截断；已知拒绝页面约 0.6 秒内被识别。主业务步骤约 102 秒后按失败退出，三类诊断产物均上传成功。没有成功登录、没有执行游戏领取，也未将验证码成功误报为领取成功。
+- 验证范围：模型 API、视觉 JSON、实际挑战通过、失败页面识别、有限尝试与产物上传已验证。Epic 登录成功和领取成功仍未验证；不继续重复付费登录尝试。遵循 AGENTS.md 未执行测试套件。
+
+- 当前中英文 README 已注明真实运行限制，避免将接口预检、Docker 构建或验证码通过当作 Epic 登录/领取成功。
+
+- 最终镜像结果：最后一轮应用源码已重新构建为 linux/amd64 镜像，摘要 `sha256:87f02ab6282a7c23faf69ef6a4afcb5df1ed7a677d3fbaee466c09716db288f4`；容器内 `deploy`/配置导入成功，Firefox、Camoufox 和许可证文件均确认存在。最终源码静态检查及当前文档链接检查通过。

@@ -10,6 +10,8 @@
 
 所有验证码阶段使用同一个模型，不再提供多服务商或单阶段模型切换。API 按官方用量计费；空间任务开启低强度思考，单次请求限时 45 秒，最多请求两次，登录默认最多尝试 3 次。换模型能改善识图能力，但不能保证通过验证码或 Epic 风控。
 
+> 最新验证（2026-11-04）：官方接口预检、Docker 构建和实际验证码挑战均有通过记录，但 Epic 随后拒绝登录验证响应；尚未领取成功。详见[单次运行](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41843219304)及[维护记录](docs/maintenance-log.md)。
+
 ## GitHub Actions
 
 在仓库 **Settings → Secrets and variables → Actions → Secrets** 配置：
