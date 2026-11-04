@@ -27,6 +27,8 @@
 ## 运行和排障
 
 进入 Actions → Epic Awesome Gamer (Scheduled) → Run workflow。
+可勾选 `preflight_only`，仅检查真实视觉/JSON 接口及浏览器安装，避免排障时反复登录 Epic。
+正常领取前同样会先调用一次模型接口检查；接口、密钥或参数错误会在登录前直接报告。
 启动日志应显示 `provider=siliconflow`，四条模型路由均为 `Qwen/Qwen3.5-4B`。
 视觉理解、坐标题和复杂拖拽仍可能失败；免费模型的实际通过率需要以运行结果为准。
 

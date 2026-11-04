@@ -2,6 +2,11 @@ name: Epic Awesome Gamer (Scheduled)
 
 on:
   workflow_dispatch: # 手动触发
+    inputs:
+      preflight_only:
+        description: '仅检查模型接口和浏览器环境，不登录或领取'
+        type: boolean
+        default: false
   schedule:
     # 每周四 UTC 15:20 运行一次（北京时间周四 23:20）
     # 该时间点放在 Epic 周免刷新之后，避免过早触发。
@@ -48,7 +53,7 @@ jobs:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
           PYTHONPATH: app
         run: |
-          uv run --frozen python -c "from settings import settings; error = settings.llm_configuration_error; print(error or 'SiliconFlow configuration OK'); raise SystemExit(1 if error else 0)"
+          uv run --frozen python scripts/check_siliconflow.py
 
       - name: Validate hCaptcha protocol contract
         env:
@@ -67,6 +72,7 @@ jobs:
         run: uv run --frozen playwright install --with-deps firefox
 
       - name: Run Epic Awesome Gamer
+        if: ${{ !inputs.preflight_only }}
         env:
           EPIC_EMAIL: ${{ secrets.EPIC_EMAIL }}
           EPIC_PASSWORD: ${{ secrets.EPIC_PASSWORD }}
@@ -93,7 +99,7 @@ jobs:
           xvfb-run --auto-servernum --server-num=1 --server-args='-screen 0, 1920x1080x24' uv run --frozen app/deploy.py
 
       - name: Write success summary
-        if: success()
+        if: ${{ success() && !inputs.preflight_only }}
         run: |
           if grep -Rqs -E \
             'unable to download any more free games|wait 24 hours before trying again|24-hour free-game limit detected' \
@@ -116,6 +122,10 @@ jobs:
               echo "- If you later report an issue from a private fork, upload the artifact zip files because maintainers cannot access private Actions pages."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Write preflight summary
+        if: ${{ success() && inputs.preflight_only }}
+        run: echo '模型视觉/JSON 接口和浏览器安装预检通过；本次未登录或领取游戏。' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Write failure summary
         if: failure()

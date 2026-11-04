@@ -1349,3 +1349,11 @@
 - 改动文件：app/settings.py、app/extensions/llm_adapter.py、app/services/epic_authorization_service.py、app/services/browser_context.py、.github/workflows/epic-gamer.yml、scripts/install_camoufox.py、scripts/package_runtime.py、.env.example、README.md、README.en.md、docs/siliconflow-setup.md、本维护日志。
 - 处理结果：新增 siliconflow 独立配置，共用 OpenAI chat/completions 传输和结构解析，默认 Qwen/Qwen3.5-4B，关闭深度思考，45 秒请求时限、最多两次请求，并限制免费路线的全部模型名，禁止收费或 GLM 回退；Actions 明确选择该路线，忽略旧 GLM 配置。固定 Ubuntu 24.04、冻结依赖、安装 Camoufox 135.0.1-beta.24，并为已知配置属性异常启用 Firefox 降级。商城会话继续等待并探测账号状态；调试文件采用可移植路径打包 ZIP 后上传。
 - 验证：Python AST 和 YAML 解析、锁定版本 Ruff 默认规则、Black、git diff --check、配置导入及四条模型路由检查、scripts/check_hcaptcha_contract.py 均通过。依照 AGENTS.md 未执行测试套件。云端真实接口及领取结果将记录在后续条目。
+
+### 2026-11-04 增加登录前的硅基流动接口预检
+
+- 现象：仅检查 Secret 是否存在，不能提前发现模型不支持图片或 JSON 参数；这类错误可能在验证码重试中反复出现。
+- 根因判断：配置校验没有实际检查模型接口契约。
+- 改动文件：scripts/check_siliconflow.py、.github/workflows/epic-gamer.yml、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：登录前使用一张诊断图片确认免费模型的视觉输入与 JSON 输出可用。新增 preflight_only 手动运行选项，只检查接口和浏览器安装，不登录 Epic；保持默认定时领取行为。
+- 验证：新增脚本 Python 语法、Ruff、Black 与工作流 YAML 解析通过，未执行测试套件；云端接口检查结果待记录。
