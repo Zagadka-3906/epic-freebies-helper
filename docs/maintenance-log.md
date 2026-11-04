@@ -1357,3 +1357,11 @@
 - 改动文件：scripts/check_siliconflow.py、.github/workflows/epic-gamer.yml、docs/siliconflow-setup.md、本维护日志。
 - 处理结果：登录前使用一张诊断图片确认免费模型的视觉输入与 JSON 输出可用。新增 preflight_only 手动运行选项，只检查接口和浏览器安装，不登录 Epic；保持默认定时领取行为。
 - 验证：新增脚本 Python 语法、Ruff、Black 与工作流 YAML 解析通过，未执行测试套件；云端接口检查结果待记录。
+
+### 2026-11-04 修正硅基流动 system 消息契约
+
+- 现象：真实接口预检 run 41809167086 返回 HTTP 400 / code 20015，提示 System message must be at the beginning。
+- 根因判断：视觉坐标提示与新增的 JSON schema 提示被分别生成为两条 system 消息，硅基流动只接受开头的一条 system 消息。
+- 改动文件：app/extensions/llm_adapter.py、本维护日志。
+- 处理结果：将 schema 追加到已有的首条 system 消息；没有 system 消息时才创建一条。停止旧版本领取运行，避免重复无效请求。
+- 验证：Ruff、Black、git diff --check 通过；重新执行云端接口预检，结果待记录。未执行测试套件。

@@ -1142,14 +1142,13 @@ class _GLMAsyncModels:
             payload["max_tokens"] = 2048
             schema = getattr(config, "response_schema", None)
             if isinstance(schema, type) and issubclass(schema, BaseModel):
-                payload["messages"].insert(
-                    0,
-                    {
-                        "role": "system",
-                        "content": "Return only a JSON object matching this JSON schema: "
-                        + json.dumps(schema.model_json_schema(), ensure_ascii=False),
-                    },
+                instruction = "Return only a JSON object matching this JSON schema: " + json.dumps(
+                    schema.model_json_schema(), ensure_ascii=False
                 )
+                if payload["messages"] and payload["messages"][0]["role"] == "system":
+                    payload["messages"][0]["content"] += "\n\n" + instruction
+                else:
+                    payload["messages"].insert(0, {"role": "system", "content": instruction})
 
         if thinking_payload := _glm_thinking_payload(model, config):
             payload["thinking"] = thinking_payload
