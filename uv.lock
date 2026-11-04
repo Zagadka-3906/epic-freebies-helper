@@ -427,6 +427,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "pyotp" },
+    { name = "python-dotenv" },
 ]
 
 [package.dev-dependencies]
@@ -444,6 +445,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
     { name = "pyotp", specifier = ">=2.9.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1" },
 ]
 
 [package.metadata.requires-dev]

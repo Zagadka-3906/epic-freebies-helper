@@ -4,12 +4,17 @@ from pathlib import Path
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 
+from dotenv import load_dotenv
 from hcaptcha_challenger.agent import AgentConfig
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import SettingsConfigDict
 
 from extensions.hcaptcha_adapter import apply_hcaptcha_drag_patch
 from extensions.deepseek_provider import MODEL, install_deepseek_provider
+
+# TOTP and notification services read os.environ; share the root dotenv with them.
+# Existing process/Actions credentials take precedence over local file values.
+load_dotenv(Path(".env"), override=False)
 
 # --- 核心路径定义 ---
 PROJECT_ROOT = Path(__file__).parent

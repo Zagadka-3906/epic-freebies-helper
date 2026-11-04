@@ -1499,3 +1499,11 @@
   - 同步上游 Firefox 迟到帧事件崩溃保护、结账重复点击保护、调试截图容错、可选 WXPush 通知和功能建议模板；保留上游维护历史和测试源码，未执行测试套件。
   - 删除孤立 Celery 调度脚本及其 12 个直接/间接依赖、Gemini 提交信息生成器、过时环境生成器、重复工作流说明、旧教程图片/开发计划及会话转储。保留许可证、作者与维护历史。Docker 从当前源码构建；本地调度统一为每周四 23:20（UTC+8）。
 - 验证：Ruff、Black、依赖接口检查和配置导入已通过；官方 API、Actions 环境及真实领取的验证结果将在运行后追加。按 AGENTS.md 未执行测试套件。
+
+### 2026-11-04 DeepSeek 官方预检通过与本地配置读取修正
+
+- 症状：模型迁移后需确认官方密钥、图片输入及 JSON/空间参数真实可用；复查发现本地 TOTP/通知直接读取 `os.environ`，仅由 Pydantic 读取 `.env` 时这些可选项不会启用。
+- 根因判断：本地配置存在两种读取路径，Actions 直接注入环境变量不会暴露该问题。
+- 改动文件：`app/settings.py`、`pyproject.toml`、`uv.lock`、`docs/maintenance-log.md`。
+- 处理结果：启动时加载根目录 `.env` 且不覆盖已有进程环境，统一账号/模型和可选服务的配置来源；显式声明原已存在的 `python-dotenv` 依赖。未发送真实通知。
+- 验证：[Actions 41839849101](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41839849101) 的官方视觉/JSON、归一化坐标思考请求、依赖协议、Camoufox/Firefox 安装均通过；此次 `preflight_only=true`，没有登录或领取。冻结依赖同步、Node 语法与 Compose 配置检查通过。本机 Docker 引擎不可用，未构建镜像；遵循 AGENTS.md 未执行测试套件。
