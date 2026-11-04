@@ -1389,3 +1389,11 @@
 - 改动文件：app/extensions/llm_adapter.py、app/extensions/hcaptcha_adapter.py、scripts/check_siliconflow.py、docs/siliconflow-setup.md、本维护日志。
 - 处理结果：空间定位启用 1024 token 推理预算，其他请求保持非推理模式。模型请求增加整体 45 秒截止时间，防止连接/读取分阶段超时累积。使用原始题目文字；两/三个图标题采用带 min_length/max_length 的 Pydantic schema，不完整答案在 provider 重试层被拒绝，不直接提交。预检增加空间坐标及推理参数的真实接口检查。
 - 验证：Black、Ruff 默认规则、hCaptcha 协议和 git diff --check 通过；未执行测试套件。真实 API 与短时领取验证结果待记录。
+
+### 2026-11-04 使用服务端结构化输出并缩小推理预算
+
+- 现象：run 41816744954 的视觉和空间推理接口预检通过，但真实图形题出现整体 45 秒超时，以及 TwoIconSelection / ThreeIconSelection 缺少字段的错误，返回内容仍是 schema 本身；本轮主动结束，未确认登录和领取成功。
+- 根因判断：将完整 JSON schema 放入小模型提示词仍可能被当成需要复述的内容；1024 token 推理加输出也会耗尽单请求时间预算。
+- 改动文件：app/extensions/llm_adapter.py、scripts/check_siliconflow.py、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：使用硅基流动文档中的 response_format=json_schema 传递字段约束，提示词只要求实际答案，不再包含 schema 定义；空间推理预算降为 512，保留 45 秒整体截止时间和最多两次尝试。继续仅允许免费 Qwen/Qwen3.5-4B，不切换 GLM 或收费模型。
+- 验证：Black、Ruff 默认规则和 git diff --check 通过；未执行测试套件。将仅执行最终 API/浏览器预检，实际验证码通过率仍未验证成功。

@@ -1144,15 +1144,18 @@ class _GLMAsyncModels:
             )
             payload["enable_thinking"] = spatial
             if spatial:
-                payload["thinking_budget"] = 1024
+                payload["thinking_budget"] = 512
             payload["max_tokens"] = 2048
             schema = getattr(config, "response_schema", None)
             if isinstance(schema, type) and issubclass(schema, BaseModel):
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()},
+                }
                 instruction = (
                     "Return one JSON instance containing the actual answer values. "
-                    "Use the following schema only as a format guide; do not copy the schema "
-                    "or output $defs, properties, required, or title. JSON schema: "
-                    + json.dumps(schema.model_json_schema(), ensure_ascii=False)
+                    "The response format specifies the required fields. "
+                    "Do not describe the format or copy a schema definition."
                 )
                 if payload["messages"] and payload["messages"][0]["role"] == "system":
                     payload["messages"][0]["content"] += "\n\n" + instruction

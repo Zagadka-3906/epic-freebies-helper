@@ -70,7 +70,7 @@ async def main() -> None:
         not (0 <= point.x <= 1000 and 0 <= point.y <= 1000) for point in spatial.parsed.points
     ):
         raise RuntimeError("SiliconFlow spatial API did not return normalized coordinates")
-    print("SiliconFlow spatial reasoning API ready | thinking_budget=1024")
+    print("SiliconFlow spatial reasoning API ready | thinking_budget=512 | format=json_schema")
 
 
 if __name__ == "__main__":
