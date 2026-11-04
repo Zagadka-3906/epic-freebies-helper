@@ -1,5 +1,9 @@
 # 本 Fork：硅基流动免费模型配置
 
+2026-11-04 验证状态：最新结构化视觉/空间 API 与浏览器预检已通过。
+此前多轮真实领取未确认成功，出现过验证码识别错误、坐标契约混用和格式问题；
+最新修复后的完整领取结果仍需单独确认。请以 Actions 的实际入库确认记录为准。
+
 当前 GitHub Actions 固定使用 `LLM_PROVIDER=siliconflow`、
 `https://api.siliconflow.cn/v1` 和 `Qwen/Qwen3.5-4B`。
 旧的 `LLM_PROVIDER=glm` 仓库变量、`GLM_MODEL` 及 GLM Secrets 不再参与工作流。

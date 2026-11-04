@@ -1397,3 +1397,11 @@
 - 改动文件：app/extensions/llm_adapter.py、scripts/check_siliconflow.py、docs/siliconflow-setup.md、本维护日志。
 - 处理结果：使用硅基流动文档中的 response_format=json_schema 传递字段约束，提示词只要求实际答案，不再包含 schema 定义；空间推理预算降为 512，保留 45 秒整体截止时间和最多两次尝试。继续仅允许免费 Qwen/Qwen3.5-4B，不切换 GLM 或收费模型。
 - 验证：Black、Ruff 默认规则和 git diff --check 通过；未执行测试套件。将仅执行最终 API/浏览器预检，实际验证码通过率仍未验证成功。
+
+### 2026-11-04 最终结构化接口与环境预检通过
+
+- 现象：此前完整领取诊断未确认成功，不能将接口可用等同于领取成功。
+- 根因判断：基础环境、API 契约和验证码识别质量属于不同验证层面，需分别报告。
+- 改动文件：docs/siliconflow-setup.md、本维护日志；本条不再改变运行代码。
+- 处理结果：最终预检 run 41818790977（代码 4fd4f9a）成功，确认免费 Qwen/Qwen3.5-4B 的视觉 JSON schema 输出、512 token 空间推理参数、固定 Camoufox 与 Firefox 安装可用。代码修复将合入主分支，随后执行完整流程验证；当前尚不声称领取成功。
+- 验证：Python 语法、Ruff 默认规则、Black、hCaptcha 协议、工作流 YAML 和 git diff --check 已通过；按 AGENTS.md 未执行测试套件。
