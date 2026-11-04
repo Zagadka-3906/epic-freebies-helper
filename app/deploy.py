@@ -31,6 +31,10 @@ from services.telegram_notification_service import (
     send_collection_summary_to_telegram,
     telegram_notifications_enabled,
 )
+from services.wxpush_notification_service import (
+    send_collection_summary_to_wxpush,
+    wxpush_notifications_enabled,
+)
 from settings import LOG_DIR
 from settings import settings
 from utils import init_log
@@ -108,6 +112,14 @@ async def execute_browser_tasks(headless: bool | str = True, *, collect_summary:
         return summary
 
 
+async def _deliver_collection_summary(summary, *, account_label: str | None = None) -> None:
+    """Fan the claim summary out to every configured notification channel."""
+    if telegram_notifications_enabled():
+        await send_collection_summary_to_telegram(summary, account_label=account_label)
+    if wxpush_notifications_enabled():
+        await send_collection_summary_to_wxpush(summary, account_label=account_label)
+
+
 async def execute_browser_tasks_with_notification(
     headless: bool | str = True, *, account_label: str | None = None
 ) -> str | None:
@@ -115,17 +127,26 @@ async def execute_browser_tasks_with_notification(
         logger.error(configuration_error)
         raise RuntimeError(configuration_error)
 
-    notifications_enabled = telegram_notifications_enabled()
+    notifications_enabled = telegram_notifications_enabled() or wxpush_notifications_enabled()
     if not notifications_enabled:
-        logger.debug("Telegram notification is not configured; using standard collection flow")
+        logger.debug("No notification channel is configured; using standard collection flow")
+    else:
+        enabled_channels = []
+        if telegram_notifications_enabled():
+            enabled_channels.append("Telegram")
+        if wxpush_notifications_enabled():
+            enabled_channels.append("WXPush")
+        logger.debug("Notification channel(s) enabled: {}", ", ".join(enabled_channels))
 
     try:
         summary = await execute_browser_tasks(
             headless=headless, collect_summary=notifications_enabled
         )
     except Exception as err:
+        # Notify first, then decide whether this failure is a rate limit — the
+        # rate-limited outcome must not swallow the failure notification.
         if notifications_enabled:
-            await send_collection_summary_to_telegram(
+            await _deliver_collection_summary(
                 failure_summary_from_exception(err), account_label=account_label
             )
         if _is_free_game_rate_limit_error(err):
@@ -137,7 +158,7 @@ async def execute_browser_tasks_with_notification(
         raise
 
     if notifications_enabled:
-        await send_collection_summary_to_telegram(summary, account_label=account_label)
+        await _deliver_collection_summary(summary, account_label=account_label)
     return None
 
 
@@ -256,15 +277,7 @@ async def deploy():
     logger.debug(
         f"Starting deployment with configuration: {json.dumps(sj, indent=2, ensure_ascii=False)}"
     )
-    logger.info(
-        "Effective LLM model routing | provider={} | challenge_classifier={} | "
-        "image_classifier={} | spatial_point_reasoner={} | spatial_path_reasoner={}",
-        settings.LLM_PROVIDER,
-        settings.CHALLENGE_CLASSIFIER_MODEL,
-        settings.IMAGE_CLASSIFIER_MODEL,
-        settings.SPATIAL_POINT_REASONER_MODEL,
-        settings.SPATIAL_PATH_REASONER_MODEL,
-    )
+    logger.info("Official DeepSeek model | model={}", settings.IMAGE_CLASSIFIER_MODEL)
 
     # Execute an immediate collection task (single- or multi-account)
     await _run_accounts(headless=headless)
@@ -277,25 +290,12 @@ async def deploy():
     # Initialize and configure async scheduler
     scheduler = AsyncIOScheduler()
 
-    # Strategy 1: Thursday 23:30 to Friday 03:30, every hour (Beijing Time)
+    # Use the same weekly schedule as GitHub Actions (UTC+8 Thursday 23:20).
     scheduler.add_job(
         _run_accounts,
-        trigger=CronTrigger(
-            day_of_week="thu", hour="23,0,1,2,3", minute="30", timezone="Asia/Shanghai"
-        ),
+        trigger=CronTrigger(day_of_week="thu", hour="23", minute="20", timezone="Asia/Shanghai"),
         id="weekly_epic_games_task",
         name="weekly_epic_games_task",
-        args=[headless],
-        replace_existing=False,
-        max_instances=1,
-    )
-
-    # Strategy 2: Daily at 12:00 PM (Beijing Time)
-    scheduler.add_job(
-        _run_accounts,
-        trigger=CronTrigger(hour="12", minute="0", timezone="Asia/Shanghai"),
-        id="daily_epic_games_task",
-        name="daily_epic_games_task",
         args=[headless],
         replace_existing=False,
         max_instances=1,

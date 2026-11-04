@@ -35,7 +35,7 @@ class ThreeIconSelection(ImageAreaSelectChallenge):
     points: list[PointCoordinate] = Field(min_length=3, max_length=3)
 
 
-async def _siliconflow_spatial_response(
+async def _deepseek_spatial_response(
     reasoner: Any,
     *,
     challenge_screenshot: Path,
@@ -44,7 +44,7 @@ async def _siliconflow_spatial_response(
     response_schema: type,
 ) -> Any:
     if challenge_bbox is None:
-        raise ValueError("Cannot map SiliconFlow coordinates without a challenge bounding box")
+        raise ValueError("Cannot map DeepSeek coordinates without a challenge bounding box")
     response = await reasoner._provider.generate_with_images(
         images=[challenge_screenshot],
         user_prompt=user_prompt,
@@ -67,11 +67,11 @@ async def _siliconflow_spatial_response(
         else [point for path in response.paths for point in (path.start_point, path.end_point)]
     )
     if not points or any(not (0 <= point.x <= 1000 and 0 <= point.y <= 1000) for point in points):
-        raise ValueError("SiliconFlow spatial coordinates must be nonempty and within 0..1000")
+        raise ValueError("DeepSeek spatial coordinates must be nonempty and within 0..1000")
     for point in points:
         point.x = round(challenge_bbox["x"] + point.x * challenge_bbox["width"] / 1000)
         point.y = round(challenge_bbox["y"] + point.y * challenge_bbox["height"] / 1000)
-    logger.info("Mapped SiliconFlow normalized coordinates to page | points={}", len(points))
+    logger.info("Mapped DeepSeek normalized coordinates to page | points={}", len(points))
     return response
 
 
@@ -226,34 +226,6 @@ def _point_inside_bounds(
     x, y = point
     x_min, y_min, x_max, y_max = bounds
     return x_min <= x <= x_max and y_min <= y <= y_max
-
-
-def _build_point_prompt(
-    user_prompt: str,
-    *,
-    challenge_bbox: dict[str, float] | None,
-    clickable_bounds: tuple[float, float, float, float] | None,
-) -> str:
-    if clickable_bounds is not None:
-        x_min, y_min, x_max, y_max = clickable_bounds
-        constraint = (
-            "The clickable tile grid is within page coordinates "
-            f"x={x_min:.0f}..{x_max:.0f}, y={y_min:.0f}..{y_max:.0f}. "
-            "Every returned point must be inside this grid. Repeated count badges and example "
-            "animals outside the grid are references only, regardless of which side they occupy."
-        )
-    elif challenge_bbox is not None:
-        x_min = float(challenge_bbox["x"])
-        y_min = float(challenge_bbox["y"])
-        x_max = x_min + float(challenge_bbox["width"])
-        y_max = y_min + float(challenge_bbox["height"])
-        constraint = (
-            "Every returned point must be inside the visible challenge bounds "
-            f"x={x_min:.0f}..{x_max:.0f}, y={y_min:.0f}..{y_max:.0f}."
-        )
-    else:
-        return user_prompt
-    return f"{user_prompt}\n\n{constraint}"
 
 
 def _is_count_selection_question(question: str) -> bool:
@@ -655,22 +627,6 @@ async def _resolve_outline_paths(
     return paths
 
 
-def _build_drag_prompt(user_prompt: str, *, source_points: list[tuple[int, int]]) -> str:
-    details = (
-        f"Authoritative draggable centers from the challenge payload: {source_points}. "
-        "Use these exact start_point values and reason only about each end_point."
-    )
-    if _is_line_completion_question(user_prompt):
-        details += (
-            " For numbered line completion, locate fixed segments 3 and 5 and the two exposed "
-            "ends they present. Translate the entire segment 4 between them. Its end_point is "
-            "the center of segment 4 after placement and should lie in the geometric corridor "
-            "between segments 3 and 5, usually near the midpoint of their numbered circles. "
-            "Reject any candidate at marker 3, marker 5, or a distant unrelated empty area."
-        )
-    return f"{user_prompt}\n\n{details}"
-
-
 def _cancel_pending_empty_response(agent: Any) -> None:
     pending = getattr(agent, "_epic_empty_response_task", None)
     if pending is not None and not pending.done():
@@ -740,9 +696,7 @@ def apply_hcaptcha_drag_patch() -> None:
 
             for cid in range(crumb_count):
                 await self.page.wait_for_timeout(self.config.WAIT_FOR_CHALLENGE_VIEW_TO_RENDER_MS)
-                raw, projection = await self._capture_spatial_mapping(
-                    frame_challenge, cache_key, cid
-                )
+                raw, _ = await self._capture_spatial_mapping(frame_challenge, cache_key, cid)
                 challenge_bbox = await frame_challenge.locator(
                     "//div[@class='challenge-view']"
                 ).bounding_box()
@@ -758,33 +712,23 @@ def apply_hcaptcha_drag_patch() -> None:
                         image_grid_bounds, challenge_screenshot=raw, challenge_bbox=challenge_bbox
                     )
 
-                user_prompt = _build_point_prompt(
-                    base_prompt, challenge_bbox=challenge_bbox, clickable_bounds=clickable_bounds
+                question = (
+                    self.captcha_payload.get_requester_question()
+                    if self.captcha_payload
+                    else getattr(self, "_challenge_prompt", "")
+                ) or ""
+                response_schema = ImageAreaSelectChallenge
+                if re.search(r"\b(?:two|2)\s+icons?\b", question, re.IGNORECASE):
+                    response_schema = TwoIconSelection
+                elif re.search(r"\b(?:three|3)\s+icons?\b", question, re.IGNORECASE):
+                    response_schema = ThreeIconSelection
+                response = await _deepseek_spatial_response(
+                    self._spatial_point_reasoner,
+                    challenge_screenshot=raw,
+                    challenge_bbox=challenge_bbox,
+                    user_prompt=question or base_prompt,
+                    response_schema=response_schema,
                 )
-                if getattr(self.config, "LLM_PROVIDER", "") == "siliconflow":
-                    question = (
-                        self.captcha_payload.get_requester_question()
-                        if self.captcha_payload
-                        else getattr(self, "_challenge_prompt", "")
-                    ) or ""
-                    response_schema = ImageAreaSelectChallenge
-                    if re.search(r"\b(?:two|2)\s+icons?\b", question, re.IGNORECASE):
-                        response_schema = TwoIconSelection
-                    elif re.search(r"\b(?:three|3)\s+icons?\b", question, re.IGNORECASE):
-                        response_schema = ThreeIconSelection
-                    response = await _siliconflow_spatial_response(
-                        self._spatial_point_reasoner,
-                        challenge_screenshot=raw,
-                        challenge_bbox=challenge_bbox,
-                        user_prompt=question or base_prompt,
-                        response_schema=response_schema,
-                    )
-                else:
-                    response = await self._spatial_point_reasoner(
-                        challenge_screenshot=raw,
-                        grid_divisions=projection,
-                        auxiliary_information=user_prompt,
-                    )
                 logger.debug(f'[{cid+1}/{crumb_count}]ToolInvokeMessage: {response.log_message}')
 
                 validation_error = _point_answer_validation_error(
@@ -822,7 +766,7 @@ def apply_hcaptcha_drag_patch() -> None:
 
         for cid in range(crumb_count):
             await self.page.wait_for_timeout(self.config.WAIT_FOR_CHALLENGE_VIEW_TO_RENDER_MS)
-            raw, projection = await self._capture_spatial_mapping(frame_challenge, cache_key, cid)
+            raw, _ = await self._capture_spatial_mapping(frame_challenge, cache_key, cid)
             challenge_bbox = await frame_challenge.locator(
                 "//div[@class='challenge-view']"
             ).bounding_box()
@@ -841,28 +785,13 @@ def apply_hcaptcha_drag_patch() -> None:
                     challenge_bbox=challenge_bbox,
                 )
             if paths is None:
-                source_points = _payload_source_points(
-                    captcha_payload=self.captcha_payload,
-                    crumb_id=cid,
+                response = await _deepseek_spatial_response(
+                    self._spatial_path_reasoner,
                     challenge_screenshot=raw,
                     challenge_bbox=challenge_bbox,
+                    user_prompt=user_prompt,
+                    response_schema=ImageDragDropChallenge,
                 )
-                if getattr(self.config, "LLM_PROVIDER", "") == "siliconflow":
-                    response = await _siliconflow_spatial_response(
-                        self._spatial_path_reasoner,
-                        challenge_screenshot=raw,
-                        challenge_bbox=challenge_bbox,
-                        user_prompt=user_prompt,
-                        response_schema=ImageDragDropChallenge,
-                    )
-                else:
-                    response = await self._spatial_path_reasoner(
-                        challenge_screenshot=raw,
-                        grid_divisions=projection,
-                        auxiliary_information=_build_drag_prompt(
-                            user_prompt, source_points=source_points
-                        ),
-                    )
                 logger.debug(f'[{cid+1}/{crumb_count}]ToolInvokeMessage: {response.log_message}')
                 self._spatial_path_reasoner.cache_response(
                     path=cache_key.joinpath(f"{cache_key.name}_{cid}_model_answer.json")

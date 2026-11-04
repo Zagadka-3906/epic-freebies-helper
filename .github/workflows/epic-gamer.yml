@@ -7,6 +7,11 @@ on:
         description: '仅检查模型接口和浏览器环境，不登录或领取'
         type: boolean
         default: false
+      auth_attempts:
+        description: '登录最多尝试次数（排障时选 1，减少接口消耗）'
+        type: choice
+        options: ['1', '3']
+        default: '3'
   schedule:
     # 每周四 UTC 15:20 运行一次（北京时间周四 23:20）
     # 该时间点放在 Epic 周免刷新之后，避免过早触发。
@@ -14,6 +19,13 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: epic-gamer-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   epic-gamer:
@@ -34,6 +46,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
+          version: "0.13.7"
           enable-cache: true
 
       - name: Set up Python
@@ -45,20 +58,19 @@ jobs:
           sudo apt-get install -y xvfb libxml2-dev libxslt-dev
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --no-dev
 
-      - name: Validate SiliconFlow configuration
+      - name: Validate official DeepSeek vision API
         env:
-          LLM_PROVIDER: siliconflow
-          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           PYTHONPATH: app
         run: |
-          uv run --frozen python scripts/check_siliconflow.py
+          uv run --frozen --no-dev python scripts/check_deepseek.py
 
       - name: Validate hCaptcha protocol contract
         env:
           PYTHONPATH: app
-        run: uv run --frozen python scripts/check_hcaptcha_contract.py
+        run: uv run --frozen --no-dev python scripts/check_hcaptcha_contract.py
 
       # 增加 GITHUB_TOKEN 以降低 Camoufox 下载时的 403 频率限制。
       # 即使这里失败，运行时也可以回退到 Playwright Firefox。
@@ -67,25 +79,27 @@ jobs:
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: uv run --frozen python scripts/install_camoufox.py
+        run: uv run --frozen --no-dev python scripts/install_camoufox.py
 
       - name: Install Playwright Firefox fallback
-        run: uv run --frozen playwright install --with-deps firefox
+        run: uv run --frozen --no-dev playwright install --with-deps firefox
 
       - name: Run Epic Awesome Gamer
         if: ${{ !inputs.preflight_only }}
         env:
+          AUTH_MAX_ATTEMPTS: ${{ inputs.auth_attempts || '3' }}
           EPIC_EMAIL: ${{ secrets.EPIC_EMAIL }}
           EPIC_PASSWORD: ${{ secrets.EPIC_PASSWORD }}
           EPIC_ACCOUNTS: ${{ secrets.EPIC_ACCOUNTS }}
           EPIC_TOTP_SECRET: ${{ secrets.EPIC_TOTP_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          # This fork uses only the free SiliconFlow route. Old GLM settings are ignored.
-          LLM_PROVIDER: siliconflow
-          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
-          SILICONFLOW_BASE_URL: https://api.siliconflow.cn/v1
-          SILICONFLOW_MODEL: Qwen/Qwen3.5-4B
+          WXPUSH_ENDPOINT: ${{ secrets.WXPUSH_ENDPOINT }}
+          WXPUSH_TOKEN: ${{ secrets.WXPUSH_TOKEN }}
+          WXPUSH_USERID: ${{ secrets.WXPUSH_USERID }}
+          WXPUSH_TEMPLATE_ID: ${{ secrets.WXPUSH_TEMPLATE_ID }}
+          WXPUSH_BASE_URL: ${{ secrets.WXPUSH_BASE_URL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           BROWSER_BACKEND: ${{ steps.camoufox.outcome == 'success' && 'auto' || 'playwright' }}
           BROWSER_PROXY: ${{ secrets.BROWSER_PROXY }}
           HEADLESS: virtual
@@ -96,8 +110,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PYTHONPATH: app
         run: |
-          echo "🚀 启动定时领取任务（SiliconFlow / Qwen3.5-4B 免费模型）..."
-          xvfb-run --auto-servernum --server-num=1 --server-args='-screen 0, 1920x1080x24' uv run --frozen app/deploy.py
+          echo "🚀 启动定时领取任务（DeepSeek 官方 / deepseek-flash）..."
+          xvfb-run --auto-servernum --server-num=1 --server-args='-screen 0, 1920x1080x24' uv run --frozen --no-dev app/deploy.py
 
       - name: Write success summary
         if: ${{ success() && !inputs.preflight_only }}
@@ -156,11 +170,11 @@ jobs:
           fi
 
       - name: Package runtime artifacts
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         run: python3 scripts/package_runtime.py
 
       - name: Upload runtime artifacts
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         uses: actions/upload-artifact@v7
         with:
           name: epic-runtime-${{ github.run_id }}
@@ -168,7 +182,7 @@ jobs:
           retention-days: 7
 
       - name: Upload log artifacts
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         uses: actions/upload-artifact@v7
         with:
           name: epic-logs-${{ github.run_id }}
@@ -176,7 +190,7 @@ jobs:
           retention-days: 7
 
       - name: Upload screenshot artifacts
-        if: always()
+        if: ${{ always() && !inputs.preflight_only }}
         uses: actions/upload-artifact@v7
         with:
           name: epic-screenshots-${{ github.run_id }}

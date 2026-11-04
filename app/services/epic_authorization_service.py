@@ -499,6 +499,13 @@ class EpicAuthorization:
                     )
                 continue
 
+            body = " ".join((await self._page_body_text()).lower().split())
+            if "incorrect response. please refresh the page" in body:
+                raise RuntimeError(
+                    "Epic rejected the login verification response: Incorrect response. "
+                    "Please refresh the page. Captcha success does not confirm Epic login."
+                )
+
             if await self._has_visible_hcaptcha():
                 logger.warning(
                     "Login captcha is visible during authentication outcome; solving before "

@@ -1,33 +1,18 @@
-FROM mcr.microsoft.com/playwright:v1.52.0-noble
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+FROM mcr.microsoft.com/playwright:v1.53.0-noble
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /bin/
 
 USER root
-
 WORKDIR /app
+ENV UV_LINK_MODE=copy UV_NO_DEV=1
 
-SHELL ["/bin/bash", "-c"]
-
-ENV DISPLAY=:99 \
-    UV_LINK_MODE=copy
-
-# Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb tini \
+    && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-cache --all-extras
-
-# Install system packages, including unzip for the manual installation
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends \
-    xvfb \
-    tini \
-    wget \
-    curl \
-    unzip && \
-    rm -rf /var/lib/apt/lists/*
-
-# Fetching addons and other necessary data.
-# This will detect the pre-installed binaries and skip re-downloading them.
-RUN uv run camoufox fetch
-
-ADD . /app
+    uv python install 3.12 && uv sync --frozen --no-dev --python 3.12
+# Python and Node Playwright tags can bundle different Firefox revisions.
+RUN uv run --frozen playwright install --with-deps firefox
+COPY scripts/install_camoufox.py scripts/install_camoufox.py
+RUN uv run --frozen python scripts/install_camoufox.py
+COPY app/ app/
+COPY LICENSE ./

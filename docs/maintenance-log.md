@@ -1413,3 +1413,131 @@
 - 改动文件：README.md、README.en.md、docs/siliconflow-setup.md、本维护日志；本条仅更新验证结论，不再改变运行逻辑。
 - 处理结果：基础兼容性、服务商迁移、结构化输出、坐标契约和 artifact 上传修复保留。遵守用户要求，仅调用硅基流动免费 Qwen/Qwen3.5-4B，不自动切换到 GLM 或收费型号。文档明确区分预检成功与真实领取失败；商城会话等待补丁因未完成登录，尚未获得端到端验证。
 - 验证：正式运行 logs/runtime/screenshots 三类产物均上传成功，最终状态 failure；相关源码静态检查、协议检查及最终 API/环境预检通过。遵循 AGENTS.md 未执行测试套件。
+### 2026-09-06 为 GitHub Issues 增加独立的功能建议入口
+
+- 现象：
+  - Issue #28 的微信通知功能建议使用了 Bug 表单，被要求填写 Actions 运行链接、Fork 可见性和复现步骤，并自动添加了 `bug` 标签。
+- 根因判断：
+  - 仓库仅提供中英文 Bug 表单，且关闭了空白 Issue，缺少专门用于新功能和改进建议的入口。
+- 改动文件：
+  - `.github/ISSUE_TEMPLATE/03-feature-request-zh.yml`
+  - `.github/ISSUE_TEMPLATE/04-feature-request-en.yml`
+  - `docs/maintenance-log.md`
+- 处理结果：
+  - 新增中英文 Feature 表单，标题使用 `[Feature]` 前缀，并复用仓库已有的 `enhancement` 标签。
+  - 仅要求描述使用场景和期望功能；替代方案、配置兼容性与相关资料为可选项，不要求失败运行链接或复现步骤。
+  - 提醒提交者保护敏感信息，并考虑可选功能对现有单账号配置及领取流程的兼容性；原有 Bug 表单和程序运行逻辑保持不变。
+  - 表单需提交并推送到 GitHub 默认分支后，才会出现在新建 Issue 的模板选择页。
+  - YAML 解析、表单字段及必填项静态检查通过；遵守仓库约定，未执行测试或领取任务。
+
+### 2026-09-06 修复领取阶段 Firefox 失效 frame 导航导致的驱动崩溃
+
+- 现象：
+  - Actions run `33967879331` / job `101311091728` 在登录 hCaptcha 最终成功、Epic 商店会话验证完成后，领取 `Alone With You` 时失败。
+  - `Get` 点击出现 `Device not supported` 弹窗，处理 Continue 时，原始 job 日志中的 Playwright Node 驱动抛出 `TypeError: Cannot read properties of undefined (reading 'childFrames')`；随后 Python 报 `Connection closed while reading from the driver`。
+  - 错误处理中的截图也因驱动断连失败，最终异常变成 `Page.screenshot`，容易被误认为截图或验证码问题。
+- 根因判断：
+  - 此次运行使用 Playwright `1.53.0`、Camoufox Python 包 `0.4.11` 和动态下载的 Camoufox `152.0.4-beta.30`。Firefox 的导航提交事件引用了 frame 表中不存在的对象；Playwright 未做空值检查便访问 `childFrames()`，导致整个驱动退出。迟到的 iframe 导航事件可在本地安装的真实 Node 驱动代码中复现完全相同的堆栈。
+  - Python 层捕获连接异常无法恢复已退出的驱动，增加验证码重试也无法解决该崩溃。
+  - 另发现 `Get` 点击超时或设备弹窗关闭后未在下次点击前检查领取进度，可能重复提交并替换正在加载的 checkout；这是同一链路的独立重试缺口，不能仅凭现有日志认定它就是本次竞态的唯一触发原因。
+- 改动文件：
+  - `app/extensions/playwright_runtime.py`
+  - `app/extensions/playwright_frame_guard.cjs`
+  - `app/services/browser_context.py`
+  - `app/services/epic_games_service.py`
+  - `tests/test_playwright_runtime.py`
+  - `tests/test_browser_runtime_smoke.py`
+  - `tests/test_checkout_state_machine.py`
+  - `docs/advanced.md`
+  - `docs/advanced.en.md`
+  - `docs/maintenance-log.md`
+- 处理结果：
+  - 两个 Firefox 后端启动驱动前加载同一窄范围保护，仅跳过不存在的 frame 的导航提交事件；有效 frame 的原始处理、worker 清理和其他异常保持不变。未修改 `.venv` 文件、全局 Node 环境、模型配置或通知配置。
+  - `Get` 重试前检查 checkout 是否已经推进；若已推进则进入结账观察，不再重复点击。诊断截图增加 5 秒时限并容忍失败，避免覆盖原始领取异常或虚报截图已保存。
+  - 按本次用户明确要求执行测试：修改前基线 `60 passed`；修复后 `EPIC_BROWSER_SMOKE=1 .venv/bin/python -m pytest -q` 为 `70 passed`，包含实际 Node 驱动崩溃复现、有效 frame 行为保留、带空格路径、重复点击防护，以及两个真实浏览器的 iframe 替换检查。
+  - 本地真实 Camoufox 流程复用已有登录态，在 `Get`、设备不支持弹窗、`Add to library` 后确认 `IN LIBRARY`，领取进程 exit code 0；另起浏览器只读核对 Epic 订单历史，确认 `Alone With You` 对应记录存在。
+  - 普通 Playwright Firefox 的真实登录对照仍因登录未完成而失败，未将其转为成功。本次未重新验证全新会话的完整 hCaptcha 登录路径，也未重跑 GitHub Actions；不能把本地结果等同于云端所有网络环境均已通过。
+  - Ruff、Black、Node 语法检查、hCaptcha 协议契约检查及 `git diff --check` 通过；中英文排障文档补充原始驱动日志的定位方法和升级 Playwright 后的复验要求。
+
+### 2026-09-06 增加可选 WXPush 微信通知并隔离通知异常（PR #29）
+
+- 现象：
+  - Issue #28 希望通过微信接收领取结果；原有通知渠道仅支持 Telegram。
+  - PR #29 初版中，错误的 `WXPUSH_ENDPOINT`（如 `https://[broken`）可能在通知异常保护之外触发 URL 解析异常，覆盖领取结果或阻断限流后的正常返回。
+  - 初版未验证响应是否符合 WXPush 成功协议，误配为 `/skin` 页面时，即使接口返回 HTTP 200 HTML、没有发送消息，也可能记录发送成功。
+- 根因判断：
+  - 通知端点仅检查是否包含 `://`，未完整保护地址解析、消息构造及响应读取；HTTP 请求成功也不等同于微信推送成功。
+  - 新渠道必须复用现有领取摘要和账号标签，并保持可选配置，不能把配置错误、网络或推送服务故障转换成领取任务失败。
+- 改动文件：
+  - `app/services/wxpush_notification_service.py`
+  - `app/deploy.py`
+  - `tests/test_wxpush_notification.py`
+  - `.github/workflows/epic-gamer.yml`
+  - `.github/workflows/README.md`
+  - `.github/workflows/README.en.md`
+  - `README.md`
+  - `README.en.md`
+  - `docs/maintenance-log.md`
+- 处理结果：
+  - 新增面向自托管 `frankiejun/wxpush` 的可选通知渠道。仅在 Token 和可解析的 HTTP(S) 端点同时配置时启用；未配置时不新增通知请求，保持原单账号和 Telegram 路径。
+  - 复用 `CollectionSummary`，向已配置渠道发送同一领取摘要；多账号正文使用现有打码标签。标题限制为 20 字，正文超过 500 字时按行截断并标记；中英文文档说明所需 Secrets、服务部署及微信模板限制。
+  - URL 解析拒绝已识别的非法地址，消息构造、HTTP 发送及响应读取异常均作为通知警告处理。仅接受 JSON 对象中以 `Successfully sent messages` 开头的 `msg` 作为服务端成功确认；HTML、无效 JSON 或未确认成功的响应不再记录成功日志。
+  - 限流仍先发送包含失败原因的摘要，再返回 `rate_limited` 正常结束；不会把限流记为领取成功，其他领取异常仍保持失败。未改动登录、hCaptcha、浏览器或 checkout 业务逻辑，保留 `master` 的 `70354be` 浏览器修复。
+  - 对最新 PR 代码完成静态复审，并核对 WXPush 上游 `/wxsend` 响应协议；Ruff、Black、Python 语法、工作流 YAML 和 `git diff --check` 检查通过。
+  - 按仓库规则，本轮未执行测试或真实微信投递。新增文件包含 29 个测试定义，但仍缺少发送异常、双渠道调度及限流返回值的集成回归覆盖；不能将此前浏览器修复的 70 项测试结果视为本 PR 的验证结果。
+
+### 2026-11-04 统一 DeepSeek 官方 API、合并上游并清理历史实现
+
+- 症状：免费小模型实际登录运行未通过验证码；用户要求改用 DeepSeek-V4.1-Flash-1017 官方 API，并删除旧接入和不再使用的代码；Fork 同时落后上游 7 个提交。
+- 根因判断：模型识图/空间推理能力可能影响通过率，但浏览器、坐标契约、云端 IP 和页面时序也会影响结果。旧适配层混合多服务商请求参数与宽松输出猜测，不能直接复用于官方 API。
+- 改动文件：`app/extensions/deepseek_provider.py`、`app/settings.py`、`app/extensions/hcaptcha_adapter.py`、`app/deploy.py`、`scripts/check_deepseek.py`、`scripts/check_hcaptcha_contract.py`、Actions 工作流、Docker/环境模板、README/开发说明、`pyproject.toml`、`uv.lock`；合并上游截至 `d90190bf` 的所有提交。
+- 处理结果：
+  - 使用官方 `https://api.deepseek.com/chat/completions` 和当前官方模型 ID `deepseek-flash`；只读取 `DEEPSEEK_API_KEY`，不切换到其他提供方。别名随官方更新，不承诺永久锁定 1017 快照。
+  - 直接实现依赖的 `ChatProvider` 协议并替换默认工厂；删除 1438 行旧多服务商适配层和相应旧测试。保留依赖所需的内部无敏感信息兼容字段，不需要 Google 密钥或请求。
+  - 使用官方 JSON Object 模式、Schema/示例提示和 Pydantic 严格解析；空间请求开启低强度思考，4096 tokens 上限；单次请求总限时 45 秒，最多两次，仅对临时错误重试。登录默认从 5 次减到 3 次，Actions 同分支串行，减少无效消耗。
+  - 保留本地拖拽解法、整图归一化坐标映射、点击边界保护、会话等待、TOTP、多账号、Camoufox 固定版本、Firefox 降级和产物路径兼容。
+  - 同步上游 Firefox 迟到帧事件崩溃保护、结账重复点击保护、调试截图容错、可选 WXPush 通知和功能建议模板；保留上游维护历史和测试源码，未执行测试套件。
+  - 删除孤立 Celery 调度脚本及其 12 个直接/间接依赖、Gemini 提交信息生成器、过时环境生成器、重复工作流说明、旧教程图片/开发计划及会话转储。保留许可证、作者与维护历史。Docker 从当前源码构建；本地调度统一为每周四 23:20（UTC+8）。
+- 验证：Ruff、Black、依赖接口检查和配置导入已通过；官方 API、Actions 环境及真实领取的验证结果将在运行后追加。按 AGENTS.md 未执行测试套件。
+
+### 2026-11-04 DeepSeek 官方预检通过与本地配置读取修正
+
+- 症状：模型迁移后需确认官方密钥、图片输入及 JSON/空间参数真实可用；复查发现本地 TOTP/通知直接读取 `os.environ`，仅由 Pydantic 读取 `.env` 时这些可选项不会启用。
+- 根因判断：本地配置存在两种读取路径，Actions 直接注入环境变量不会暴露该问题。
+- 改动文件：`app/settings.py`、`pyproject.toml`、`uv.lock`、`docs/maintenance-log.md`。
+- 处理结果：启动时加载根目录 `.env` 且不覆盖已有进程环境，统一账号/模型和可选服务的配置来源；显式声明原已存在的 `python-dotenv` 依赖。未发送真实通知。
+- 验证：[Actions 41839849101](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41839849101) 的官方视觉/JSON、归一化坐标思考请求、依赖协议、Camoufox/Firefox 安装均通过；此次 `preflight_only=true`，没有登录或领取。冻结依赖同步、Node 语法与 Compose 配置检查通过。本机 Docker 引擎不可用，未构建镜像；遵循 AGENTS.md 未执行测试套件。
+
+### 2026-11-04 Docker 构建验证发现并修复 Firefox 修订号不匹配
+
+- 症状：Docker 引擎启动后，镜像构建和应用导入通过，但容器检查发现 Playwright 所需 Firefox 可执行文件不存在，降级路径会启动失败。
+- 根因判断：`mcr.microsoft.com/playwright:v1.53.0-noble` 内含 Node 发行版 Firefox 1487，而锁定的 Python Playwright 1.53.0 要求 Firefox 1488；相同标签版本不能替代具体二进制检查。
+- 改动文件：`docker/Dockerfile`、`.devcontainer/devcontainer.json`、`docs/maintenance-log.md`。
+- 处理结果：Docker 构建和 Dev Container 初始化显式执行锁定 Python Playwright 的 `install --with-deps firefox`，确保降级浏览器与驱动一致；保留固定版本 Camoufox。未注入用户密钥到构建过程或镜像。
+- 验证：已完成首轮 linux/amd64 构建、应用配置导入及浏览器路径检查；修复后重新构建并检查所需可执行文件。真实领取流程仍由 Actions 独立验证；未执行测试套件。
+
+- 同步整理：仅环境/API 预检不会创建领取日志或截图，因此工作流在 `preflight_only=true` 时跳过产物打包与上传，避免预期内的空文件警告；正式领取仍始终收集产物。
+
+- 修复后结果：linux/amd64 镜像 `epic-freebies-helper:deepseek-check` 已重新构建成功（镜像摘要 `sha256:d2b2a7dce60872e809fd7397ace8c8452cad11e4a89dd5fe729dae980ae150d4`）；容器内应用/配置导入成功，确认 Firefox 1488 可执行文件存在且 `--version` 输出 Firefox 139.0，固定 Camoufox 可执行文件存在。构建与检查均未携带 API/Epic 密钥，未在本地执行真实登录或测试套件。同时更新 AGENTS.md 的现行代码路径并移除废弃 Celery 忽略项。
+
+### 2026-11-04 实际运行发现输出截断与 Epic 登录响应拒绝
+
+- 症状：[Actions 41840093188](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41840093188) 的模型/浏览器预检通过，但三次登录后最终失败，未领取游戏。部分空间请求返回 `finish_reason=length`；有一次完整 hCaptcha 返回 `success` 后，仍未建立 Epic 登录会话。
+- 根因判断：官方思考 tokens 计入输出上限，复杂视觉题在 4096 tokens 内可能来不及输出最终 JSON。截图同时明确显示 Epic 的 `Incorrect response. Please refresh the page.`；这是验证响应被 Epic 拒绝，不能将 hCaptcha 成功直接等同登录成功，也不能仅凭该提示断定是模型能力或 IP 问题。旧登录观察逻辑未识别该页面错误，继续等待无效挑战直至超时。
+- 改动文件：`app/extensions/deepseek_provider.py`、`app/services/epic_authorization_service.py`、Actions 工作流、README/开发说明、`docs/maintenance-log.md`。
+- 处理结果：空间请求输出上限调整为 8192 tokens，其他分类请求 1024 tokens，仍保留每次 45 秒、最多两次请求限制；登录观察到该已知错误时立即退出当前尝试，由现有外层有界流程刷新页面。手动 Actions 新增 `auth_attempts` 的 1/3 次选项，便于限制付费排障消耗。
+- 验证：原运行有 6 次空间响应成功解析/映射、一次 hCaptcha `success`，没有确认登录或领取；三类诊断产物上传成功。新改动先完成静态检查，随后只做一次登录尝试的真实验证；未执行测试套件。
+
+- 容器缓存整理：依赖层只复制 `pyproject.toml`/`uv.lock`，避免普通 README 修改触发浏览器重新安装；许可证在应用层单独复制，保留镜像中的来源许可文本。重新构建用于检查最后的应用改动。
+
+### 2026-11-04 单次真实验证确认模型可通过挑战、Epic 仍拒绝登录
+
+- 症状：[Actions 41843219304](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41843219304) 选择 `auth_attempts=1`，最终仍为 failure。
+- 根因判断：两轮 ThreeIconSelection 响应分别约 24.5 秒/5657 总 tokens、6.1 秒/1563 总 tokens，严格 JSON 解析和坐标映射成功；14:02:18 UTC hCaptcha 明确返回 `success`，随后 Epic 页面显示 `Incorrect response. Please refresh the page.`。因此当前阻塞在 Epic 接受登录验证响应这一环节，不能归因于 API Key、模型接口不可用或本次模型输出截断；也不能仅凭该提示断定具体网络/IP、浏览器指纹或 token 原因。
+- 改动文件：`docs/maintenance-log.md`；保留上一条输出预算与页面错误识别修复。
+- 处理结果：新版空间输出预算在实际题图中可用，本次未出现截断；已知拒绝页面约 0.6 秒内被识别。主业务步骤约 102 秒后按失败退出，三类诊断产物均上传成功。没有成功登录、没有执行游戏领取，也未将验证码成功误报为领取成功。
+- 验证范围：模型 API、视觉 JSON、实际挑战通过、失败页面识别、有限尝试与产物上传已验证。Epic 登录成功和领取成功仍未验证；不继续重复付费登录尝试。遵循 AGENTS.md 未执行测试套件。
+
+- 当前中英文 README 已注明真实运行限制，避免将接口预检、Docker 构建或验证码通过当作 Epic 登录/领取成功。
+
+- 最终镜像结果：最后一轮应用源码已重新构建为 linux/amd64 镜像，摘要 `sha256:87f02ab6282a7c23faf69ef6a4afcb5df1ed7a677d3fbaee466c09716db288f4`；容器内 `deploy`/配置导入成功，Firefox、Camoufox 和许可证文件均确认存在。最终源码静态检查及当前文档链接检查通过。

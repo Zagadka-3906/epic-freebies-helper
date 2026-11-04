@@ -32,9 +32,10 @@ uv run ruff check --fix
 
 - **`app/models.py`**: Pydantic models for Epic Games data structures (OrderItem, Order, PromotionGame)
 - **`app/settings.py`**: Configuration management using pydantic-settings, extends hcaptcha-challenger's AgentConfig
+- **`app/extensions/deepseek_provider.py`**: Official DeepSeek ChatProvider implementation
 - **`app/services/epic_games_service.py`**: Main game collection logic and Epic Store interaction
 - **`app/services/epic_authorization_service.py`**: Authentication and login handling
-- **`app/jobs.py`**: Job orchestration functions for collecting and adding games to cart
+- **`app/accounts.py`**: Single- and multi-account parsing and masked account labels
 - **`app/deploy.py`**: Main deployment/execution entry point
 
 ### Key Dependencies
@@ -46,19 +47,19 @@ uv run ruff check --fix
 
 ### Directory Structure
 
-- `app/logs/`: Application logs (error.log, runtime.log, serialize.log)
-- `app/runtime/`: Runtime data including screenshots, recordings, and hcaptcha cache
-- `app/user_data/`: Browser profile and session data
-- `docker/`: Docker compose configuration and environment files
+- `app/volumes/logs/`: Application logs (error.log, runtime.log, serialize.log)
+- `app/volumes/runtime/`: Runtime data including screenshots, recordings, and hcaptcha cache
+- `app/volumes/user_data/`: Browser profile and session data
+- `docker/`: Docker build and Compose configuration; reads the root .env
 
 ### Configuration
 
 Environment variables are managed through `EpicSettings` class in `settings.py`:
 
-- `EPIC_EMAIL`: Epic Games account email (2FA must be disabled)
+- `EPIC_EMAIL`: Epic Games account email (authenticator TOTP is supported)
 - `EPIC_PASSWORD`: Epic Games account password
-- `GEMINI_API_KEY`: Google Gemini API key for captcha solving
-- `CRON_SCHEDULE`: Cron expression for scheduled runs (default: every 5 hours)
+- `DEEPSEEK_API_KEY`: Official DeepSeek API key; provider is extensions/deepseek_provider.py
+- `ENABLE_APSCHEDULER`: Enable the local scheduler; disabled in GitHub Actions
 
 ### Browser Automation Flow
 
