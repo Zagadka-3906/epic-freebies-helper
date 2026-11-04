@@ -78,9 +78,7 @@ def _format_games(games: list[PromotionGame]) -> str:
 
 
 def build_telegram_summary_message(
-    summary: CollectionSummary,
-    *,
-    account_label: str | None = None,
+    summary: CollectionSummary, *, account_label: str | None = None
 ) -> str:
     if summary.error_message and summary.newly_claimed_promotions:
         status = "部分成功"
@@ -153,9 +151,7 @@ def failure_summary_from_exception(err: Exception) -> CollectionSummary:
 
 
 async def send_collection_summary_to_telegram(
-    summary: CollectionSummary,
-    *,
-    account_label: str | None = None,
+    summary: CollectionSummary, *, account_label: str | None = None
 ) -> None:
     token = _env("TELEGRAM_BOT_TOKEN")
     chat_id = _env("TELEGRAM_CHAT_ID")

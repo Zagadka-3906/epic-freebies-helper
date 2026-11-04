@@ -9,7 +9,7 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import SettingsConfigDict
 
 from extensions.hcaptcha_adapter import apply_hcaptcha_drag_patch
-from extensions.llm_adapter import apply_llm_patch
+from extensions.deepseek_provider import MODEL, install_deepseek_provider
 
 # --- 核心路径定义 ---
 PROJECT_ROOT = Path(__file__).parent
@@ -30,42 +30,15 @@ def _env(name: str, default: str | None = None) -> str | None:
     return value or default
 
 
-def _coerce_secret_input(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, SecretStr):
-        value = value.get_secret_value()
-    value = str(value).strip()
-    return value or None
-
-
 # === 配置类定义 ===
 class EpicSettings(AgentConfig):
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 
-    GEMINI_API_KEY: SecretStr | None = Field(default=None, description="Gemini/AiHubMix API key")
+    DEEPSEEK_API_KEY: SecretStr | None = Field(default=None)
+    DEEPSEEK_REQUEST_TIMEOUT_SECONDS: float = Field(default=45.0, ge=10.0, le=50.0)
 
-    GEMINI_BASE_URL: str = Field(
-        default="", description="Optional Gemini-compatible base URL override"
-    )
-
-    GEMINI_MODEL: str = Field(default="gemini-2.5-pro", description="Gemini default model")
-
-    LLM_PROVIDER: str = Field(default="", description="Supported values: siliconflow, gemini, glm")
-
-    SILICONFLOW_API_KEY: SecretStr | None = Field(default=None)
-    SILICONFLOW_BASE_URL: str = Field(default="https://api.siliconflow.cn/v1")
-    SILICONFLOW_MODEL: str = Field(default="Qwen/Qwen3.5-4B")
-    SILICONFLOW_REQUEST_TIMEOUT_SECONDS: float = Field(default=45.0, gt=5.0, le=50.0)
-
-    GLM_API_KEY: SecretStr | None = Field(default=None, description="GLM API key")
-
-    GLM_BASE_URL: str = Field(
-        default="https://open.bigmodel.cn/api/paas/v4", description="GLM OpenAI-compatible base URL"
-    )
-
-    GLM_MODEL: str = Field(default="glm-4.6v", description="GLM vision-capable default model")
-    GLM_REQUEST_TIMEOUT_SECONDS: float = Field(default=50.0, gt=5.0, le=120.0)
+    # Internal AgentConfig compatibility slot, not a Gemini credential or provider.
+    GEMINI_API_KEY: SecretStr = Field(default="deepseek-provider", exclude=True, repr=False)
 
     BROWSER_BACKEND: str = Field(
         default="auto", description="Supported values: auto, camoufox, playwright"
@@ -96,81 +69,30 @@ class EpicSettings(AgentConfig):
     captcha_response_dir: Path = HCAPTCHA_DIR.joinpath(".captcha")
 
     ENABLE_APSCHEDULER: bool = Field(default=True)
-    TASK_TIMEOUT_SECONDS: int = Field(default=900)
-    AUTH_MAX_ATTEMPTS: int = Field(default=5, ge=3, le=8)
-    REDIS_URL: str = Field(default="redis://redis:6379/0")
-    CELERY_WORKER_CONCURRENCY: int = Field(default=1)
-    CELERY_TASK_TIME_LIMIT: int = Field(default=1200)
-    CELERY_TASK_SOFT_TIME_LIMIT: int = Field(default=900)
+    AUTH_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=8)
 
     @model_validator(mode="before")
     @classmethod
-    def _bridge_provider_credentials(cls, raw_data):
+    def _set_internal_provider_slot(cls, raw_data):
         data = dict(raw_data) if isinstance(raw_data, dict) else {}
-
-        provider = str(data.get("LLM_PROVIDER") or "").strip().lower()
-        glm_key = _coerce_secret_input(data.get("GLM_API_KEY"))
-        gemini_key = _coerce_secret_input(data.get("GEMINI_API_KEY"))
-        siliconflow_key = _coerce_secret_input(data.get("SILICONFLOW_API_KEY"))
-
-        if not provider:
-            provider = "siliconflow" if siliconflow_key else ("glm" if glm_key else "gemini")
-            data["LLM_PROVIDER"] = provider
-        elif provider not in {"siliconflow", "gemini", "glm"}:
-            raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
-
-        # `hcaptcha-challenger` still expects GEMINI_API_KEY in its base settings model.
-        # Seed it before field validation so GLM-only environments work in local runs and CI.
-        bridge_key = siliconflow_key if provider == "siliconflow" else glm_key
-        if gemini_key is None and bridge_key is not None:
-            data["GEMINI_API_KEY"] = bridge_key
-
-        return data
-
-    @model_validator(mode="after")
-    def _apply_runtime_defaults(self):
-        for field_name in (
-            "GEMINI_BASE_URL",
-            "GEMINI_MODEL",
-            "LLM_PROVIDER",
-            "GLM_BASE_URL",
-            "GLM_MODEL",
-            "SILICONFLOW_BASE_URL",
-            "SILICONFLOW_MODEL",
-            "BROWSER_BACKEND",
-            "EPIC_EMAIL",
+        # Ignore obsolete Gemini environment variables. AgentV still reads this field
+        # when constructing tools, but our provider obtains the actual DeepSeek key directly.
+        data["GEMINI_API_KEY"] = "deepseek-provider"
+        for name in (
             "CHALLENGE_CLASSIFIER_MODEL",
             "IMAGE_CLASSIFIER_MODEL",
             "SPATIAL_POINT_REASONER_MODEL",
             "SPATIAL_PATH_REASONER_MODEL",
         ):
-            value = getattr(self, field_name, None)
-            if isinstance(value, str):
-                setattr(self, field_name, value.strip())
+            data[name] = MODEL
+        return data
 
-        provider = (self.LLM_PROVIDER or "").strip().lower()
-        self.LLM_PROVIDER = provider
-
-        if self.GEMINI_API_KEY is None and self.GLM_API_KEY is not None:
-            self.GEMINI_API_KEY = self.GLM_API_KEY
-
-        provider_default = {
-            "siliconflow": self.SILICONFLOW_MODEL,
-            "glm": self.GLM_MODEL,
-            "gemini": self.GEMINI_MODEL,
-        }[provider]
-        if not self.CHALLENGE_CLASSIFIER_MODEL:
-            self.CHALLENGE_CLASSIFIER_MODEL = provider_default
-        if not self.IMAGE_CLASSIFIER_MODEL:
-            self.IMAGE_CLASSIFIER_MODEL = provider_default
-        if not self.SPATIAL_POINT_REASONER_MODEL:
-            self.SPATIAL_POINT_REASONER_MODEL = provider_default
-        if not self.SPATIAL_PATH_REASONER_MODEL:
-            self.SPATIAL_PATH_REASONER_MODEL = provider_default
-
-        browser_backend = (self.BROWSER_BACKEND or "").strip().lower()
-        self.BROWSER_BACKEND = browser_backend or "auto"
-
+    @model_validator(mode="after")
+    def _apply_runtime_defaults(self):
+        self.BROWSER_BACKEND = self.BROWSER_BACKEND.strip().lower() or "auto"
+        if self.BROWSER_BACKEND not in {"auto", "camoufox", "playwright"}:
+            raise ValueError("BROWSER_BACKEND must be auto, camoufox or playwright")
+        self.EPIC_EMAIL = self.EPIC_EMAIL.strip()
         return self
 
     @property
@@ -187,43 +109,14 @@ class EpicSettings(AgentConfig):
 
     @property
     def llm_configuration_error(self) -> str | None:
-        provider = (self.LLM_PROVIDER or "").strip().lower()
-
-        if provider == "siliconflow":
-            if self.SILICONFLOW_API_KEY is None:
-                return (
-                    "Invalid LLM configuration: SILICONFLOW_API_KEY is empty. "
-                    "Add it to GitHub Actions Secrets; GLM credentials are not used."
-                )
-            # This fork is configured for free models only; never fall back to paid models.
-            for name in (
-                "SILICONFLOW_MODEL",
-                "CHALLENGE_CLASSIFIER_MODEL",
-                "IMAGE_CLASSIFIER_MODEL",
-                "SPATIAL_POINT_REASONER_MODEL",
-                "SPATIAL_PATH_REASONER_MODEL",
-            ):
-                if getattr(self, name) != "Qwen/Qwen3.5-4B":
-                    return f"{name} must be Qwen/Qwen3.5-4B for the free SiliconFlow route"
-
-        if provider == "glm" and self.GLM_API_KEY is None:
+        if self.DEEPSEEK_API_KEY is None or not self.DEEPSEEK_API_KEY.get_secret_value().strip():
             return (
-                "Invalid LLM configuration: LLM_PROVIDER=glm but GLM_API_KEY is empty. "
-                "Set GLM_API_KEY in GitHub Actions Secrets, or switch LLM_PROVIDER to gemini "
-                "if you intend to use Gemini/AiHubMix."
+                "DEEPSEEK_API_KEY is empty; configure the official DeepSeek key in Actions Secrets"
             )
-
-        if provider == "gemini" and self.GEMINI_API_KEY is None:
-            return (
-                "Invalid LLM configuration: LLM_PROVIDER=gemini but GEMINI_API_KEY is empty. "
-                "Set GEMINI_API_KEY in GitHub Actions Secrets, or switch LLM_PROVIDER to glm "
-                "if you intend to use GLM."
-            )
-
         return None
 
 
 settings = EpicSettings()
 settings.ignore_request_questions = ["Please drag the crossing to complete the lines"]
-apply_llm_patch(settings)
+install_deepseek_provider(settings)
 apply_hcaptcha_drag_patch()

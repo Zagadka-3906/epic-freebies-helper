@@ -1,4 +1,5 @@
-docker compose pull
-docker compose down
-docker compose up -d
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")"
+docker compose up -d --build
 docker compose logs -f

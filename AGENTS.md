@@ -55,10 +55,10 @@ uv run ruff check --fix
 
 Environment variables are managed through `EpicSettings` class in `settings.py`:
 
-- `EPIC_EMAIL`: Epic Games account email (2FA must be disabled)
+- `EPIC_EMAIL`: Epic Games account email (authenticator TOTP is supported)
 - `EPIC_PASSWORD`: Epic Games account password
-- `GEMINI_API_KEY`: Google Gemini API key for captcha solving
-- `CRON_SCHEDULE`: Cron expression for scheduled runs (default: every 5 hours)
+- `DEEPSEEK_API_KEY`: Official DeepSeek API key; provider is extensions/deepseek_provider.py
+- `ENABLE_APSCHEDULER`: Enable the local scheduler; disabled in GitHub Actions
 
 ### Browser Automation Flow
 
