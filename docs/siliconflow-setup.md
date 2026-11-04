@@ -45,6 +45,7 @@
 工作流固定使用 Ubuntu 24.04，按 `uv.lock` 安装依赖，并将 Camoufox
 固定为与 Python 包 0.4.11 配套的浏览器 135.0.1-beta.24。
 Camoufox 下载失败或出现已知配置兼容异常时，自动尝试 Playwright Firefox。
+固定版本安装失败时直接选择 Firefox，避免运行时再自动下载一个未锁定的 Camoufox 版本。
 
 运行调试资料会先打包成 `epic-runtime.zip` 再上传。内部路径会替换冒号等
 不兼容字符，并在 `original-paths.json` 中保留原始路径映射。

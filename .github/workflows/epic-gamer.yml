@@ -63,6 +63,7 @@ jobs:
       # 增加 GITHUB_TOKEN 以降低 Camoufox 下载时的 403 频率限制。
       # 即使这里失败，运行时也可以回退到 Playwright Firefox。
       - name: Install Camoufox
+        id: camoufox
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -85,7 +86,7 @@ jobs:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
           SILICONFLOW_BASE_URL: https://api.siliconflow.cn/v1
           SILICONFLOW_MODEL: Qwen/Qwen3.5-4B
-          BROWSER_BACKEND: auto
+          BROWSER_BACKEND: ${{ steps.camoufox.outcome == 'success' && 'auto' || 'playwright' }}
           BROWSER_PROXY: ${{ secrets.BROWSER_PROXY }}
           HEADLESS: virtual
           DISABLE_BEZIER_TRAJECTORY: false

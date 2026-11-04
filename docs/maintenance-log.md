@@ -1373,3 +1373,11 @@
 - 改动文件：app/extensions/hcaptcha_adapter.py、app/extensions/llm_adapter.py、docs/siliconflow-setup.md、本维护日志。
 - 处理结果：硅基流动点选和拖拽只使用原始图片，明确输出相对完整图片的 0..1000 坐标，由当前 challenge bounding box 确定性转换为页面坐标；拒绝缺失边界、空答案和越界归一化值，保留已有点选/计数网格校验。该分支不再注入 GLM 网格提示。JSON 指令明确要求填充实例值，不得复述 schema 定义。其他 provider 的坐标路径保留原行为。
 - 验证：Black、Ruff 默认规则、hCaptcha 协议与 git diff --check 通过。遵循 AGENTS.md 未执行测试套件；下一轮真实领取结果待记录。
+
+### 2026-11-04 防止安装失败后重新下载浮动浏览器版本
+
+- 现象：静态复查发现，Camoufox 安装步骤允许失败，但浏览器 auto 模式可能在运行时重新触发上游动态下载。
+- 根因判断：固定版本安装结果未传给运行步骤，不能完全防止浏览器二进制版本漂移。
+- 改动文件：.github/workflows/epic-gamer.yml、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：为安装步骤设置 id，根据其 outcome 选择 auto 或直接选择 playwright；安装固定版失败后不再进入可能重新下载最新版本的 Camoufox 初始化路径。
+- 验证：工作流 YAML 解析和 git diff --check 通过；固定版安装成功时，运行行为仍为已验证的 auto 分支。未执行测试套件。
