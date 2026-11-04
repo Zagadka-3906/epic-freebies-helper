@@ -9,7 +9,13 @@ import cv2
 import httpx
 import numpy as np
 from hcaptcha_challenger.agent.challenger import AgentV, RoboticArm
-from hcaptcha_challenger.models import CaptchaResponse, PointCoordinate, SpatialPath
+from hcaptcha_challenger.models import (
+    CaptchaResponse,
+    ImageAreaSelectChallenge,
+    ImageDragDropChallenge,
+    PointCoordinate,
+    SpatialPath,
+)
 from loguru import logger
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
@@ -17,6 +23,44 @@ from extensions.numbered_line_solver import solve_numbered_line_drag
 
 
 _EMPTY_CHECKCAPTCHA_GRACE_SECONDS = 5.0
+
+
+async def _siliconflow_spatial_response(
+    reasoner: Any,
+    *,
+    challenge_screenshot: Path,
+    challenge_bbox: dict[str, float] | None,
+    user_prompt: str,
+    response_schema: type,
+) -> Any:
+    if challenge_bbox is None:
+        raise ValueError("Cannot map SiliconFlow coordinates without a challenge bounding box")
+    response = await reasoner._provider.generate_with_images(
+        images=[challenge_screenshot],
+        user_prompt=user_prompt,
+        description=(
+            "Read the instruction in the image and solve that visual puzzle. "
+            "Return every requested target, using the center of each object. "
+            "For count tasks return exactly the requested number of targets. "
+            "All x and y values MUST use normalized coordinates from 0 to 1000 relative "
+            "to the entire supplied image, including its header: top-left=(0,0), "
+            "bottom-right=(1000,1000). Do not use browser/page pixels or a printed grid. "
+            "For drag tasks return one start_point/end_point pair per required move."
+        ),
+        response_schema=response_schema,
+    )
+    points = (
+        response.points
+        if isinstance(response, ImageAreaSelectChallenge)
+        else [point for path in response.paths for point in (path.start_point, path.end_point)]
+    )
+    if not points or any(not (0 <= point.x <= 1000 and 0 <= point.y <= 1000) for point in points):
+        raise ValueError("SiliconFlow spatial coordinates must be nonempty and within 0..1000")
+    for point in points:
+        point.x = round(challenge_bbox["x"] + point.x * challenge_bbox["width"] / 1000)
+        point.y = round(challenge_bbox["y"] + point.y * challenge_bbox["height"] / 1000)
+    logger.info("Mapped SiliconFlow normalized coordinates to page | points={}", len(points))
+    return response
 
 
 def _longest_contiguous_run(values: np.ndarray) -> list[int]:
@@ -705,11 +749,20 @@ def apply_hcaptcha_drag_patch() -> None:
                 user_prompt = _build_point_prompt(
                     base_prompt, challenge_bbox=challenge_bbox, clickable_bounds=clickable_bounds
                 )
-                response = await self._spatial_point_reasoner(
-                    challenge_screenshot=raw,
-                    grid_divisions=projection,
-                    auxiliary_information=user_prompt,
-                )
+                if getattr(self.config, "LLM_PROVIDER", "") == "siliconflow":
+                    response = await _siliconflow_spatial_response(
+                        self._spatial_point_reasoner,
+                        challenge_screenshot=raw,
+                        challenge_bbox=challenge_bbox,
+                        user_prompt=base_prompt,
+                        response_schema=ImageAreaSelectChallenge,
+                    )
+                else:
+                    response = await self._spatial_point_reasoner(
+                        challenge_screenshot=raw,
+                        grid_divisions=projection,
+                        auxiliary_information=user_prompt,
+                    )
                 logger.debug(f'[{cid+1}/{crumb_count}]ToolInvokeMessage: {response.log_message}')
 
                 validation_error = _point_answer_validation_error(
@@ -772,13 +825,22 @@ def apply_hcaptcha_drag_patch() -> None:
                     challenge_screenshot=raw,
                     challenge_bbox=challenge_bbox,
                 )
-                response = await self._spatial_path_reasoner(
-                    challenge_screenshot=raw,
-                    grid_divisions=projection,
-                    auxiliary_information=_build_drag_prompt(
-                        user_prompt, source_points=source_points
-                    ),
-                )
+                if getattr(self.config, "LLM_PROVIDER", "") == "siliconflow":
+                    response = await _siliconflow_spatial_response(
+                        self._spatial_path_reasoner,
+                        challenge_screenshot=raw,
+                        challenge_bbox=challenge_bbox,
+                        user_prompt=user_prompt,
+                        response_schema=ImageDragDropChallenge,
+                    )
+                else:
+                    response = await self._spatial_path_reasoner(
+                        challenge_screenshot=raw,
+                        grid_divisions=projection,
+                        auxiliary_information=_build_drag_prompt(
+                            user_prompt, source_points=source_points
+                        ),
+                    )
                 logger.debug(f'[{cid+1}/{crumb_count}]ToolInvokeMessage: {response.log_message}')
                 self._spatial_path_reasoner.cache_response(
                     path=cache_key.joinpath(f"{cache_key.name}_{cid}_model_answer.json")

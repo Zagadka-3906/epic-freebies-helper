@@ -1109,7 +1109,7 @@ class _GLMAsyncModels:
                 continue
             messages.append({"role": role, "content": items})
 
-        if has_image:
+        if has_image and not self._siliconflow:
             system_messages.append(GLM_VISUAL_COORDINATE_INSTRUCTION)
             response_fields = _schema_field_names(getattr(config, "response_schema", None))
             if "paths" in response_fields:
@@ -1142,8 +1142,11 @@ class _GLMAsyncModels:
             payload["max_tokens"] = 2048
             schema = getattr(config, "response_schema", None)
             if isinstance(schema, type) and issubclass(schema, BaseModel):
-                instruction = "Return only a JSON object matching this JSON schema: " + json.dumps(
-                    schema.model_json_schema(), ensure_ascii=False
+                instruction = (
+                    "Return one JSON instance containing the actual answer values. "
+                    "Use the following schema only as a format guide; do not copy the schema "
+                    "or output $defs, properties, required, or title. JSON schema: "
+                    + json.dumps(schema.model_json_schema(), ensure_ascii=False)
                 )
                 if payload["messages"] and payload["messages"][0]["role"] == "system":
                     payload["messages"][0]["content"] += "\n\n" + instruction

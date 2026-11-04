@@ -1365,3 +1365,11 @@
 - 改动文件：app/extensions/llm_adapter.py、本维护日志。
 - 处理结果：将 schema 追加到已有的首条 system 消息；没有 system 消息时才创建一条。停止旧版本领取运行，避免重复无效请求。
 - 验证：Ruff、Black、git diff --check 通过；重新执行云端接口预检，结果待记录。未执行测试套件。
+
+### 2026-11-04 修正 Qwen 空间坐标契约并记录真实验证
+
+- 现象：预检 run 41809498080 完整成功；真实领取 run 41809650255 在约 20 分钟后以登录失败结束。模型请求无此前 400、超时或配额错误，但多次返回 x=171..619 等坐标，被验证码页面 x=710..1210 的边界检查拒绝；另有回复复述 schema 的错误。runtime、logs、screenshots 均成功上传。
+- 根因判断：旧 GLM 视觉提示要求读页面坐标网格，Qwen 定位输出与该全局坐标契约混用。仅用描述图片的接口预检无法证明复杂验证码定位正确。
+- 改动文件：app/extensions/hcaptcha_adapter.py、app/extensions/llm_adapter.py、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：硅基流动点选和拖拽只使用原始图片，明确输出相对完整图片的 0..1000 坐标，由当前 challenge bounding box 确定性转换为页面坐标；拒绝缺失边界、空答案和越界归一化值，保留已有点选/计数网格校验。该分支不再注入 GLM 网格提示。JSON 指令明确要求填充实例值，不得复述 schema 定义。其他 provider 的坐标路径保留原行为。
+- 验证：Black、Ruff 默认规则、hCaptcha 协议与 git diff --check 通过。遵循 AGENTS.md 未执行测试套件；下一轮真实领取结果待记录。
