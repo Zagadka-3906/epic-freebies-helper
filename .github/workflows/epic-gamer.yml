@@ -7,6 +7,11 @@ on:
         description: '仅检查模型接口和浏览器环境，不登录或领取'
         type: boolean
         default: false
+      auth_attempts:
+        description: '登录最多尝试次数（排障时选 1，减少接口消耗）'
+        type: choice
+        options: ['1', '3']
+        default: '3'
   schedule:
     # 每周四 UTC 15:20 运行一次（北京时间周四 23:20）
     # 该时间点放在 Epic 周免刷新之后，避免过早触发。
@@ -82,6 +87,7 @@ jobs:
       - name: Run Epic Awesome Gamer
         if: ${{ !inputs.preflight_only }}
         env:
+          AUTH_MAX_ATTEMPTS: ${{ inputs.auth_attempts || '3' }}
           EPIC_EMAIL: ${{ secrets.EPIC_EMAIL }}
           EPIC_PASSWORD: ${{ secrets.EPIC_PASSWORD }}
           EPIC_ACCOUNTS: ${{ secrets.EPIC_ACCOUNTS }}

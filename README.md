@@ -25,7 +25,7 @@
 在 **Actions → Epic Awesome Gamer (Scheduled) → Run workflow**：
 
 1. 首次运行勾选 `preflight_only`，确认视觉接口、JSON 输出、归一化坐标和浏览器安装可用。
-2. 预检通过后取消勾选，再运行一次实际领取。
+2. 预检通过后取消勾选，再运行一次实际领取；排障时把 `auth_attempts` 选为 `1`，常规运行默认 `3`。
 3. 定时任务每周四 UTC 15:20 / 台北、北京时间 23:20 执行。Fork 后需要在 Actions 页面启用工作流；默认分支上的工作流才参与定时触发。
 
 预检只调用简单诊断图片，不登录 Epic；预检通过不代表领取成功。同一分支的运行串行排队，避免同时登录。多账号可通过仓库 Variable `JOB_TIMEOUT_MINUTES` 增加作业时限，默认 60 分钟。

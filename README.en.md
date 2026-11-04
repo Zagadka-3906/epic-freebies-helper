@@ -25,7 +25,7 @@ Old provider keys and model variables are ignored and can be removed manually fr
 Open **Actions → Epic Awesome Gamer (Scheduled) → Run workflow**:
 
 1. Enable `preflight_only` to verify image input, JSON output, normalized coordinates and browser installation.
-2. After preflight succeeds, disable it to run actual collection.
+2. After preflight succeeds, disable it to run actual collection. Select `auth_attempts=1` for bounded diagnosis; normal runs default to `3`.
 3. Scheduled collection runs Thursdays at 15:20 UTC / 23:20 UTC+8. Enable Actions in your fork; scheduled runs use the default branch.
 
 Preflight sends only simple diagnostic images and does not sign in or claim games. Its success does not prove claim success. Runs on the same branch queue sequentially. The job timeout defaults to 60 minutes; repository Variable `JOB_TIMEOUT_MINUTES` can increase it for multiple accounts.

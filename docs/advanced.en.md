@@ -28,7 +28,7 @@ Requests use the official `/chat/completions` endpoint and `deepseek-flash`. JSO
 
 Spatial tasks send the raw challenge image and request whole-image normalized coordinates in `0..1000`; mapped page coordinates are checked before clicking. Binary grid classification retains the dependency's row/column format. Do not mix page pixels, grid overlays and normalized image coordinates.
 
-Each model call has at most two attempts, each with a 45-second overall deadline including body reads. Spatial requests use official `thinking={"type":"enabled"}`, `reasoning_effort=low`, and a 4096-token output limit. Recursive challenge retries are disabled; sign-in defaults to three attempts.
+Each model call has at most two attempts, each with a 45-second overall deadline including body reads. Spatial requests use official `thinking={"type":"enabled"}`, `reasoning_effort=low`, and a 8192-token spatial output limit. Recursive challenge retries are disabled; sign-in defaults to three attempts.
 
 ## Verification
 

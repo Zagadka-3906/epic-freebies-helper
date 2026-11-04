@@ -1519,3 +1519,11 @@
 - 同步整理：仅环境/API 预检不会创建领取日志或截图，因此工作流在 `preflight_only=true` 时跳过产物打包与上传，避免预期内的空文件警告；正式领取仍始终收集产物。
 
 - 修复后结果：linux/amd64 镜像 `epic-freebies-helper:deepseek-check` 已重新构建成功（镜像摘要 `sha256:d2b2a7dce60872e809fd7397ace8c8452cad11e4a89dd5fe729dae980ae150d4`）；容器内应用/配置导入成功，确认 Firefox 1488 可执行文件存在且 `--version` 输出 Firefox 139.0，固定 Camoufox 可执行文件存在。构建与检查均未携带 API/Epic 密钥，未在本地执行真实登录或测试套件。同时更新 AGENTS.md 的现行代码路径并移除废弃 Celery 忽略项。
+
+### 2026-11-04 实际运行发现输出截断与 Epic 登录响应拒绝
+
+- 症状：[Actions 41840093188](https://github.com/Zagadka-3906/epic-freebies-helper/actions/runs/41840093188) 的模型/浏览器预检通过，但三次登录后最终失败，未领取游戏。部分空间请求返回 `finish_reason=length`；有一次完整 hCaptcha 返回 `success` 后，仍未建立 Epic 登录会话。
+- 根因判断：官方思考 tokens 计入输出上限，复杂视觉题在 4096 tokens 内可能来不及输出最终 JSON。截图同时明确显示 Epic 的 `Incorrect response. Please refresh the page.`；这是验证响应被 Epic 拒绝，不能将 hCaptcha 成功直接等同登录成功，也不能仅凭该提示断定是模型能力或 IP 问题。旧登录观察逻辑未识别该页面错误，继续等待无效挑战直至超时。
+- 改动文件：`app/extensions/deepseek_provider.py`、`app/services/epic_authorization_service.py`、Actions 工作流、README/开发说明、`docs/maintenance-log.md`。
+- 处理结果：空间请求输出上限调整为 8192 tokens，其他分类请求 1024 tokens，仍保留每次 45 秒、最多两次请求限制；登录观察到该已知错误时立即退出当前尝试，由现有外层有界流程刷新页面。手动 Actions 新增 `auth_attempts` 的 1/3 次选项，便于限制付费排障消耗。
+- 验证：原运行有 6 次空间响应成功解析/映射、一次 hCaptcha `success`，没有确认登录或领取；三类诊断产物上传成功。新改动先完成静态检查，随后只做一次登录尝试的真实验证；未执行测试套件。

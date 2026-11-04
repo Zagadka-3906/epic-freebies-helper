@@ -83,7 +83,7 @@ class DeepSeekProvider:
             ],
             "response_format": {"type": "json_object"},
             "thinking": {"type": "enabled" if spatial else "disabled"},
-            "max_tokens": 4096,
+            "max_tokens": 8192 if spatial else 1024,
         }
         if spatial:
             payload["reasoning_effort"] = "low"
