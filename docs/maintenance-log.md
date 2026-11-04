@@ -1381,3 +1381,11 @@
 - 改动文件：.github/workflows/epic-gamer.yml、docs/siliconflow-setup.md、本维护日志。
 - 处理结果：为安装步骤设置 id，根据其 outcome 选择 auto 或直接选择 playwright；安装固定版失败后不再进入可能重新下载最新版本的 Camoufox 初始化路径。
 - 验证：工作流 YAML 解析和 git diff --check 通过；固定版安装成功时，运行行为仍为已验证的 auto 分支。未执行测试套件。
+
+### 2026-11-04 免费模型图形推理和答案数量校验
+
+- 现象：run 41812569226 在约 30 分钟后被主动停止以获取日志。82 次归一化坐标转换均未触发越界错误，接口错误为 0，但有 77 次验证码失败信号、0 次成功；抽查原始截图和缓存答案，发现“三个图标”题仅返回一个错误目标。最新环境预检 run 41814743181 成功。
+- 根因判断：坐标映射问题已经消除，剩余失败涉及免费 4B 模型在关闭推理时的识别和数量判断能力；不能把预检通过视作领取成功。
+- 改动文件：app/extensions/llm_adapter.py、app/extensions/hcaptcha_adapter.py、scripts/check_siliconflow.py、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：空间定位启用 1024 token 推理预算，其他请求保持非推理模式。模型请求增加整体 45 秒截止时间，防止连接/读取分阶段超时累积。使用原始题目文字；两/三个图标题采用带 min_length/max_length 的 Pydantic schema，不完整答案在 provider 重试层被拒绝，不直接提交。预检增加空间坐标及推理参数的真实接口检查。
+- 验证：Black、Ruff 默认规则、hCaptcha 协议和 git diff --check 通过；未执行测试套件。真实 API 与短时领取验证结果待记录。

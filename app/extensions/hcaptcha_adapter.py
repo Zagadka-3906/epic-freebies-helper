@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import asyncio
 import itertools
+import re
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -18,11 +19,20 @@ from hcaptcha_challenger.models import (
 )
 from loguru import logger
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from pydantic import Field
 
 from extensions.numbered_line_solver import solve_numbered_line_drag
 
 
 _EMPTY_CHECKCAPTCHA_GRACE_SECONDS = 5.0
+
+
+class TwoIconSelection(ImageAreaSelectChallenge):
+    points: list[PointCoordinate] = Field(min_length=2, max_length=2)
+
+
+class ThreeIconSelection(ImageAreaSelectChallenge):
+    points: list[PointCoordinate] = Field(min_length=3, max_length=3)
 
 
 async def _siliconflow_spatial_response(
@@ -42,6 +52,8 @@ async def _siliconflow_spatial_response(
             "Read the instruction in the image and solve that visual puzzle. "
             "Return every requested target, using the center of each object. "
             "For count tasks return exactly the requested number of targets. "
+            "Compare all rows and columns and identify each outlier's shape or identity. "
+            "Example strips and count badges are references, not candidate tiles. "
             "All x and y values MUST use normalized coordinates from 0 to 1000 relative "
             "to the entire supplied image, including its header: top-left=(0,0), "
             "bottom-right=(1000,1000). Do not use browser/page pixels or a printed grid. "
@@ -750,12 +762,22 @@ def apply_hcaptcha_drag_patch() -> None:
                     base_prompt, challenge_bbox=challenge_bbox, clickable_bounds=clickable_bounds
                 )
                 if getattr(self.config, "LLM_PROVIDER", "") == "siliconflow":
+                    question = (
+                        self.captcha_payload.get_requester_question()
+                        if self.captcha_payload
+                        else getattr(self, "_challenge_prompt", "")
+                    ) or ""
+                    response_schema = ImageAreaSelectChallenge
+                    if re.search(r"\b(?:two|2)\s+icons?\b", question, re.IGNORECASE):
+                        response_schema = TwoIconSelection
+                    elif re.search(r"\b(?:three|3)\s+icons?\b", question, re.IGNORECASE):
+                        response_schema = ThreeIconSelection
                     response = await _siliconflow_spatial_response(
                         self._spatial_point_reasoner,
                         challenge_screenshot=raw,
                         challenge_bbox=challenge_bbox,
-                        user_prompt=base_prompt,
-                        response_schema=ImageAreaSelectChallenge,
+                        user_prompt=question or base_prompt,
+                        response_schema=response_schema,
                     )
                 else:
                     response = await self._spatial_point_reasoner(

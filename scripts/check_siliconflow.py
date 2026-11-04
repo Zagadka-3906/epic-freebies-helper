@@ -5,14 +5,19 @@ from io import BytesIO
 
 from google import genai
 from google.genai import types
+from hcaptcha_challenger.models import PointCoordinate
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from settings import settings
 
 
 class StatusDescription(BaseModel):
     description: str
+
+
+class SpatialReadiness(BaseModel):
+    points: list[PointCoordinate] = Field(min_length=1, max_length=1)
 
 
 async def main() -> None:
@@ -44,6 +49,28 @@ async def main() -> None:
     ):
         raise RuntimeError("SiliconFlow did not return a usable structured vision response")
     print(f"SiliconFlow vision/JSON API ready | model={settings.SILICONFLOW_MODEL}")
+
+    spatial = await genai.Client().aio.models.generate_content(
+        model=settings.SILICONFLOW_MODEL,
+        contents=[
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_bytes(data=buffer.getvalue(), mime_type="image/png"),
+                    types.Part.from_text(
+                        text="Return the center of this image as one point. "
+                        "Use normalized 0..1000 image coordinates. Return a JSON object."
+                    ),
+                ],
+            )
+        ],
+        config=types.GenerateContentConfig(response_schema=SpatialReadiness),
+    )
+    if not isinstance(spatial.parsed, SpatialReadiness) or any(
+        not (0 <= point.x <= 1000 and 0 <= point.y <= 1000) for point in spatial.parsed.points
+    ):
+        raise RuntimeError("SiliconFlow spatial API did not return normalized coordinates")
+    print("SiliconFlow spatial reasoning API ready | thinking_budget=1024")
 
 
 if __name__ == "__main__":

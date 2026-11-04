@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
+import asyncio
 import base64
 import json
 import mimetypes
@@ -1138,7 +1139,12 @@ class _GLMAsyncModels:
             payload["response_format"] = {"type": "json_object"}
 
         if self._siliconflow:
-            payload["enable_thinking"] = False
+            spatial = bool(
+                _schema_field_names(getattr(config, "response_schema", None)) & {"points", "paths"}
+            )
+            payload["enable_thinking"] = spatial
+            if spatial:
+                payload["thinking_budget"] = 1024
             payload["max_tokens"] = 2048
             schema = getattr(config, "response_schema", None)
             if isinstance(schema, type) and issubclass(schema, BaseModel):
@@ -1275,8 +1281,9 @@ class _GLMAsyncModels:
             timeout=httpx.Timeout(request_timeout, connect=min(30.0, request_timeout))
         ) as client:
             try:
-                response = await client.post(endpoint, headers=headers, json=payload)
-            except httpx.TimeoutException as err:
+                async with asyncio.timeout(request_timeout):
+                    response = await client.post(endpoint, headers=headers, json=payload)
+            except (httpx.TimeoutException, TimeoutError) as err:
                 raise TimeoutError(
                     f"{self._label} request timed out after {request_timeout:g} seconds "
                     f"({type(err).__name__})"
