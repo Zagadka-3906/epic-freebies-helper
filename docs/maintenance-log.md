@@ -1405,3 +1405,11 @@
 - 改动文件：docs/siliconflow-setup.md、本维护日志；本条不再改变运行代码。
 - 处理结果：最终预检 run 41818790977（代码 4fd4f9a）成功，确认免费 Qwen/Qwen3.5-4B 的视觉 JSON schema 输出、512 token 空间推理参数、固定 Camoufox 与 Firefox 安装可用。代码修复将合入主分支，随后执行完整流程验证；当前尚不声称领取成功。
 - 验证：Python 语法、Ruff 默认规则、Black、hCaptcha 协议、工作流 YAML 和 git diff --check 已通过；按 AGENTS.md 未执行测试套件。
+
+### 2026-11-04 主分支完整验证与免费模型能力限制
+
+- 现象：修复经 PR #1 合入主分支 28aa818，仓库 LLM_PROVIDER 变量改为 siliconflow。正式 run 41831225218 自然执行结束，Run Epic Awesome Gamer 步骤以登录失败退出；5 次登录尝试后仍未确认入库。
+- 根因判断：该轮视觉/JSON schema/空间推理预检和两种浏览器安装均通过；17 次坐标映射没有越界，未复现 schema 字段校验错误，HTTP 错误为 0。仍有 16 次验证码失败信号、0 次成功，并出现 45 秒模型请求超时及挑战执行超时。结合此前截图/答案中的漏选、选错图标，免费 Qwen3.5-4B 的识别质量及响应时间是当前明显限制；不能完全排除云端 IP 风控影响，也不能宣称完整领取已修好。
+- 改动文件：README.md、README.en.md、docs/siliconflow-setup.md、本维护日志；本条仅更新验证结论，不再改变运行逻辑。
+- 处理结果：基础兼容性、服务商迁移、结构化输出、坐标契约和 artifact 上传修复保留。遵守用户要求，仅调用硅基流动免费 Qwen/Qwen3.5-4B，不自动切换到 GLM 或收费型号。文档明确区分预检成功与真实领取失败；商城会话等待补丁因未完成登录，尚未获得端到端验证。
+- 验证：正式运行 logs/runtime/screenshots 三类产物均上传成功，最终状态 failure；相关源码静态检查、协议检查及最终 API/环境预检通过。遵循 AGENTS.md 未执行测试套件。

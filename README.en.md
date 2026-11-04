@@ -17,6 +17,7 @@
 > Configure `SILICONFLOW_API_KEY`, `EPIC_EMAIL`, and `EPIC_PASSWORD` in Actions Secrets.
 > The workflow ignores old GLM configuration. GLM/Gemini sections below are retained
 > upstream documentation. See [the fork setup guide](docs/siliconflow-setup.md).
+> API/browser preflight passes, but the full claim run still fails hCaptcha; no claim is confirmed.
 
 `Epic Weekly Free Games Helper` is built for regular users. It runs on GitHub Actions by default, so you do not need a server, a permanently running local machine, or any extra deployment. If you have a GitHub account, you can get started by following the setup steps below.
 
