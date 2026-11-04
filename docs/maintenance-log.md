@@ -1341,3 +1341,67 @@
   - 计数题提示改为方向无关；通过重复数量徽标识别参考条方向并约束另一侧网格。所有点选答案在缓存和点击前验证挑战边界，计数题额外验证可点击网格，越界答案直接拒绝。
   - 无效的标量拖拽坐标提前报告为结构错误；新增浏览器请求头、超时信息、重试预算、左右参考条和越界坐标回归覆盖。
   - 本地定向测试 `35 passed`，完整测试 `60 passed`，Ruff、变更文件 Black 和 `git diff --check` 均通过。
+
+### 2026-11-04 修复 Actions 环境与会话同步，切换硅基流动免费模型
+
+- 现象：最近 10 条 Actions 记录中 8 次失败；最新一次因 Ubuntu 26.04 不支持锁定的 Playwright Firefox 而失败，其他记录存在 GLM 读取超时、验证码反复失败、登录后商城状态暂为 false、Camoufox 配置属性不兼容，以及验证码目录名含冒号导致 artifact 上传失败。
+- 根因判断：ubuntu-latest 和动态浏览器下载使环境漂移；商城 false 状态立即抛错绕过 45 秒等待；免费路线缺少独立服务商配置。用户要求改用硅基流动免费模型。
+- 改动文件：app/settings.py、app/extensions/llm_adapter.py、app/services/epic_authorization_service.py、app/services/browser_context.py、.github/workflows/epic-gamer.yml、scripts/install_camoufox.py、scripts/package_runtime.py、.env.example、README.md、README.en.md、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：新增 siliconflow 独立配置，共用 OpenAI chat/completions 传输和结构解析，默认 Qwen/Qwen3.5-4B，关闭深度思考，45 秒请求时限、最多两次请求，并限制免费路线的全部模型名，禁止收费或 GLM 回退；Actions 明确选择该路线，忽略旧 GLM 配置。固定 Ubuntu 24.04、冻结依赖、安装 Camoufox 135.0.1-beta.24，并为已知配置属性异常启用 Firefox 降级。商城会话继续等待并探测账号状态；调试文件采用可移植路径打包 ZIP 后上传。
+- 验证：Python AST 和 YAML 解析、锁定版本 Ruff 默认规则、Black、git diff --check、配置导入及四条模型路由检查、scripts/check_hcaptcha_contract.py 均通过。依照 AGENTS.md 未执行测试套件。云端真实接口及领取结果将记录在后续条目。
+
+### 2026-11-04 增加登录前的硅基流动接口预检
+
+- 现象：仅检查 Secret 是否存在，不能提前发现模型不支持图片或 JSON 参数；这类错误可能在验证码重试中反复出现。
+- 根因判断：配置校验没有实际检查模型接口契约。
+- 改动文件：scripts/check_siliconflow.py、.github/workflows/epic-gamer.yml、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：登录前使用一张诊断图片确认免费模型的视觉输入与 JSON 输出可用。新增 preflight_only 手动运行选项，只检查接口和浏览器安装，不登录 Epic；保持默认定时领取行为。
+- 验证：新增脚本 Python 语法、Ruff、Black 与工作流 YAML 解析通过，未执行测试套件；云端接口检查结果待记录。
+
+### 2026-11-04 修正硅基流动 system 消息契约
+
+- 现象：真实接口预检 run 41809167086 返回 HTTP 400 / code 20015，提示 System message must be at the beginning。
+- 根因判断：视觉坐标提示与新增的 JSON schema 提示被分别生成为两条 system 消息，硅基流动只接受开头的一条 system 消息。
+- 改动文件：app/extensions/llm_adapter.py、本维护日志。
+- 处理结果：将 schema 追加到已有的首条 system 消息；没有 system 消息时才创建一条。停止旧版本领取运行，避免重复无效请求。
+- 验证：Ruff、Black、git diff --check 通过；重新执行云端接口预检，结果待记录。未执行测试套件。
+
+### 2026-11-04 修正 Qwen 空间坐标契约并记录真实验证
+
+- 现象：预检 run 41809498080 完整成功；真实领取 run 41809650255 在约 20 分钟后以登录失败结束。模型请求无此前 400、超时或配额错误，但多次返回 x=171..619 等坐标，被验证码页面 x=710..1210 的边界检查拒绝；另有回复复述 schema 的错误。runtime、logs、screenshots 均成功上传。
+- 根因判断：旧 GLM 视觉提示要求读页面坐标网格，Qwen 定位输出与该全局坐标契约混用。仅用描述图片的接口预检无法证明复杂验证码定位正确。
+- 改动文件：app/extensions/hcaptcha_adapter.py、app/extensions/llm_adapter.py、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：硅基流动点选和拖拽只使用原始图片，明确输出相对完整图片的 0..1000 坐标，由当前 challenge bounding box 确定性转换为页面坐标；拒绝缺失边界、空答案和越界归一化值，保留已有点选/计数网格校验。该分支不再注入 GLM 网格提示。JSON 指令明确要求填充实例值，不得复述 schema 定义。其他 provider 的坐标路径保留原行为。
+- 验证：Black、Ruff 默认规则、hCaptcha 协议与 git diff --check 通过。遵循 AGENTS.md 未执行测试套件；下一轮真实领取结果待记录。
+
+### 2026-11-04 防止安装失败后重新下载浮动浏览器版本
+
+- 现象：静态复查发现，Camoufox 安装步骤允许失败，但浏览器 auto 模式可能在运行时重新触发上游动态下载。
+- 根因判断：固定版本安装结果未传给运行步骤，不能完全防止浏览器二进制版本漂移。
+- 改动文件：.github/workflows/epic-gamer.yml、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：为安装步骤设置 id，根据其 outcome 选择 auto 或直接选择 playwright；安装固定版失败后不再进入可能重新下载最新版本的 Camoufox 初始化路径。
+- 验证：工作流 YAML 解析和 git diff --check 通过；固定版安装成功时，运行行为仍为已验证的 auto 分支。未执行测试套件。
+
+### 2026-11-04 免费模型图形推理和答案数量校验
+
+- 现象：run 41812569226 在约 30 分钟后被主动停止以获取日志。82 次归一化坐标转换均未触发越界错误，接口错误为 0，但有 77 次验证码失败信号、0 次成功；抽查原始截图和缓存答案，发现“三个图标”题仅返回一个错误目标。最新环境预检 run 41814743181 成功。
+- 根因判断：坐标映射问题已经消除，剩余失败涉及免费 4B 模型在关闭推理时的识别和数量判断能力；不能把预检通过视作领取成功。
+- 改动文件：app/extensions/llm_adapter.py、app/extensions/hcaptcha_adapter.py、scripts/check_siliconflow.py、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：空间定位启用 1024 token 推理预算，其他请求保持非推理模式。模型请求增加整体 45 秒截止时间，防止连接/读取分阶段超时累积。使用原始题目文字；两/三个图标题采用带 min_length/max_length 的 Pydantic schema，不完整答案在 provider 重试层被拒绝，不直接提交。预检增加空间坐标及推理参数的真实接口检查。
+- 验证：Black、Ruff 默认规则、hCaptcha 协议和 git diff --check 通过；未执行测试套件。真实 API 与短时领取验证结果待记录。
+
+### 2026-11-04 使用服务端结构化输出并缩小推理预算
+
+- 现象：run 41816744954 的视觉和空间推理接口预检通过，但真实图形题出现整体 45 秒超时，以及 TwoIconSelection / ThreeIconSelection 缺少字段的错误，返回内容仍是 schema 本身；本轮主动结束，未确认登录和领取成功。
+- 根因判断：将完整 JSON schema 放入小模型提示词仍可能被当成需要复述的内容；1024 token 推理加输出也会耗尽单请求时间预算。
+- 改动文件：app/extensions/llm_adapter.py、scripts/check_siliconflow.py、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：使用硅基流动文档中的 response_format=json_schema 传递字段约束，提示词只要求实际答案，不再包含 schema 定义；空间推理预算降为 512，保留 45 秒整体截止时间和最多两次尝试。继续仅允许免费 Qwen/Qwen3.5-4B，不切换 GLM 或收费模型。
+- 验证：Black、Ruff 默认规则和 git diff --check 通过；未执行测试套件。将仅执行最终 API/浏览器预检，实际验证码通过率仍未验证成功。
+
+### 2026-11-04 最终结构化接口与环境预检通过
+
+- 现象：此前完整领取诊断未确认成功，不能将接口可用等同于领取成功。
+- 根因判断：基础环境、API 契约和验证码识别质量属于不同验证层面，需分别报告。
+- 改动文件：docs/siliconflow-setup.md、本维护日志；本条不再改变运行代码。
+- 处理结果：最终预检 run 41818790977（代码 4fd4f9a）成功，确认免费 Qwen/Qwen3.5-4B 的视觉 JSON schema 输出、512 token 空间推理参数、固定 Camoufox 与 Firefox 安装可用。代码修复将合入主分支，随后执行完整流程验证；当前尚不声称领取成功。
+- 验证：Python 语法、Ruff 默认规则、Black、hCaptcha 协议、工作流 YAML 和 git diff --check 已通过；按 AGENTS.md 未执行测试套件。

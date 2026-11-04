@@ -13,6 +13,11 @@
 
 [🇺🇸 English](README.en.md) | [🇨🇳 中文文档](README.md)
 
+> This fork now uses SiliconFlow's free multimodal model `Qwen/Qwen3.5-4B`.
+> Configure `SILICONFLOW_API_KEY`, `EPIC_EMAIL`, and `EPIC_PASSWORD` in Actions Secrets.
+> The workflow ignores old GLM configuration. GLM/Gemini sections below are retained
+> upstream documentation. See [the fork setup guide](docs/siliconflow-setup.md).
+
 `Epic Weekly Free Games Helper` is built for regular users. It runs on GitHub Actions by default, so you do not need a server, a permanently running local machine, or any extra deployment. If you have a GitHub account, you can get started by following the setup steps below.
 
 The key point is simple: it is **fully free**. In the common setup, you do not need to pay for a server or keep a local machine online. GitHub Actions is enough to run the weekly claim flow automatically.

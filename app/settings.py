@@ -51,7 +51,12 @@ class EpicSettings(AgentConfig):
 
     GEMINI_MODEL: str = Field(default="gemini-2.5-pro", description="Gemini default model")
 
-    LLM_PROVIDER: str = Field(default="", description="Supported values: gemini, glm")
+    LLM_PROVIDER: str = Field(default="", description="Supported values: siliconflow, gemini, glm")
+
+    SILICONFLOW_API_KEY: SecretStr | None = Field(default=None)
+    SILICONFLOW_BASE_URL: str = Field(default="https://api.siliconflow.cn/v1")
+    SILICONFLOW_MODEL: str = Field(default="Qwen/Qwen3.5-4B")
+    SILICONFLOW_REQUEST_TIMEOUT_SECONDS: float = Field(default=45.0, gt=5.0, le=50.0)
 
     GLM_API_KEY: SecretStr | None = Field(default=None, description="GLM API key")
 
@@ -106,14 +111,19 @@ class EpicSettings(AgentConfig):
         provider = str(data.get("LLM_PROVIDER") or "").strip().lower()
         glm_key = _coerce_secret_input(data.get("GLM_API_KEY"))
         gemini_key = _coerce_secret_input(data.get("GEMINI_API_KEY"))
+        siliconflow_key = _coerce_secret_input(data.get("SILICONFLOW_API_KEY"))
 
-        if provider not in {"gemini", "glm"}:
-            data["LLM_PROVIDER"] = "glm" if glm_key else "gemini"
+        if not provider:
+            provider = "siliconflow" if siliconflow_key else ("glm" if glm_key else "gemini")
+            data["LLM_PROVIDER"] = provider
+        elif provider not in {"siliconflow", "gemini", "glm"}:
+            raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
 
         # `hcaptcha-challenger` still expects GEMINI_API_KEY in its base settings model.
         # Seed it before field validation so GLM-only environments work in local runs and CI.
-        if gemini_key is None and glm_key is not None:
-            data["GEMINI_API_KEY"] = glm_key
+        bridge_key = siliconflow_key if provider == "siliconflow" else glm_key
+        if gemini_key is None and bridge_key is not None:
+            data["GEMINI_API_KEY"] = bridge_key
 
         return data
 
@@ -125,6 +135,8 @@ class EpicSettings(AgentConfig):
             "LLM_PROVIDER",
             "GLM_BASE_URL",
             "GLM_MODEL",
+            "SILICONFLOW_BASE_URL",
+            "SILICONFLOW_MODEL",
             "BROWSER_BACKEND",
             "EPIC_EMAIL",
             "CHALLENGE_CLASSIFIER_MODEL",
@@ -137,14 +149,16 @@ class EpicSettings(AgentConfig):
                 setattr(self, field_name, value.strip())
 
         provider = (self.LLM_PROVIDER or "").strip().lower()
-        if provider not in {"gemini", "glm"}:
-            provider = "glm" if self.GLM_API_KEY else "gemini"
         self.LLM_PROVIDER = provider
 
         if self.GEMINI_API_KEY is None and self.GLM_API_KEY is not None:
             self.GEMINI_API_KEY = self.GLM_API_KEY
 
-        provider_default = self.GLM_MODEL if provider == "glm" else self.GEMINI_MODEL
+        provider_default = {
+            "siliconflow": self.SILICONFLOW_MODEL,
+            "glm": self.GLM_MODEL,
+            "gemini": self.GEMINI_MODEL,
+        }[provider]
         if not self.CHALLENGE_CLASSIFIER_MODEL:
             self.CHALLENGE_CLASSIFIER_MODEL = provider_default
         if not self.IMAGE_CLASSIFIER_MODEL:
@@ -174,6 +188,23 @@ class EpicSettings(AgentConfig):
     @property
     def llm_configuration_error(self) -> str | None:
         provider = (self.LLM_PROVIDER or "").strip().lower()
+
+        if provider == "siliconflow":
+            if self.SILICONFLOW_API_KEY is None:
+                return (
+                    "Invalid LLM configuration: SILICONFLOW_API_KEY is empty. "
+                    "Add it to GitHub Actions Secrets; GLM credentials are not used."
+                )
+            # This fork is configured for free models only; never fall back to paid models.
+            for name in (
+                "SILICONFLOW_MODEL",
+                "CHALLENGE_CLASSIFIER_MODEL",
+                "IMAGE_CLASSIFIER_MODEL",
+                "SPATIAL_POINT_REASONER_MODEL",
+                "SPATIAL_PATH_REASONER_MODEL",
+            ):
+                if getattr(self, name) != "Qwen/Qwen3.5-4B":
+                    return f"{name} must be Qwen/Qwen3.5-4B for the free SiliconFlow route"
 
         if provider == "glm" and self.GLM_API_KEY is None:
             return (

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
+import asyncio
 import base64
 import json
 import mimetypes
@@ -1051,6 +1052,9 @@ class _GLMAsyncModels:
     def __init__(self, settings: Any, storage: dict[str, dict[str, Any]]):
         self._settings = settings
         self._storage = storage
+        self._siliconflow = getattr(settings, "LLM_PROVIDER", "glm") == "siliconflow"
+        self._label = "SiliconFlow" if self._siliconflow else "GLM"
+        self._prefix = "SILICONFLOW" if self._siliconflow else "GLM"
 
     def _to_image_part(self, payload: bytes, mime_type: str) -> dict[str, Any]:
         encoded = base64.b64encode(payload).decode("utf-8")
@@ -1106,7 +1110,7 @@ class _GLMAsyncModels:
                 continue
             messages.append({"role": role, "content": items})
 
-        if has_image:
+        if has_image and not self._siliconflow:
             system_messages.append(GLM_VISUAL_COORDINATE_INSTRUCTION)
             response_fields = _schema_field_names(getattr(config, "response_schema", None))
             if "paths" in response_fields:
@@ -1134,6 +1138,30 @@ class _GLMAsyncModels:
         if getattr(config, "response_schema", None) is not None:
             payload["response_format"] = {"type": "json_object"}
 
+        if self._siliconflow:
+            spatial = bool(
+                _schema_field_names(getattr(config, "response_schema", None)) & {"points", "paths"}
+            )
+            payload["enable_thinking"] = spatial
+            if spatial:
+                payload["thinking_budget"] = 512
+            payload["max_tokens"] = 2048
+            schema = getattr(config, "response_schema", None)
+            if isinstance(schema, type) and issubclass(schema, BaseModel):
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()},
+                }
+                instruction = (
+                    "Return one JSON instance containing the actual answer values. "
+                    "The response format specifies the required fields. "
+                    "Do not describe the format or copy a schema definition."
+                )
+                if payload["messages"] and payload["messages"][0]["role"] == "system":
+                    payload["messages"][0]["content"] += "\n\n" + instruction
+                else:
+                    payload["messages"].insert(0, {"role": "system", "content": instruction})
+
         if thinking_payload := _glm_thinking_payload(model, config):
             payload["thinking"] = thinking_payload
 
@@ -1143,7 +1171,7 @@ class _GLMAsyncModels:
     def _extract_text(self, data: dict[str, Any]) -> str:
         choices = data.get("choices") or []
         if not choices:
-            raise ValueError("GLM response does not contain choices")
+            raise ValueError(f"{self._label} response does not contain choices")
 
         message = choices[0].get("message") or {}
         content = message.get("content")
@@ -1158,7 +1186,7 @@ class _GLMAsyncModels:
                     parts.append(item.get("text", ""))
             return "\n".join(parts).strip()
 
-        raise ValueError("GLM response content is empty")
+        raise ValueError(f"{self._label} response content is empty")
 
     def _parse_response(self, text: str, config: Any) -> Any:
         schema = getattr(config, "response_schema", None)
@@ -1182,7 +1210,9 @@ class _GLMAsyncModels:
                         text,
                     )
                 else:
-                    logger.warning("GLM structured parse fallback failed | raw_text={}", text[:500])
+                    logger.warning(
+                        "{} structured parse fallback failed | raw_text={}", self._label, text[:500]
+                    )
                     return None
 
         if isinstance(schema, type) and issubclass(schema, BaseModel):
@@ -1191,6 +1221,14 @@ class _GLMAsyncModels:
         return payload
 
     def _log_glm_error(self, response: httpx.Response):
+        if self._siliconflow:
+            logger.error(
+                "SiliconFlow request failed | status={} | trace_id={} | body={}",
+                response.status_code,
+                response.headers.get("x-siliconcloud-trace-id", ""),
+                response.text[:2000],
+            )
+            return
         body = response.text[:2000]
         code = ""
         message = ""
@@ -1223,29 +1261,34 @@ class _GLMAsyncModels:
         )
 
     async def generate_content(self, model: str, contents: Any, **kwargs) -> _PatchedResponse:
+        if self._siliconflow and model != "Qwen/Qwen3.5-4B":
+            raise ValueError("Only the free Qwen/Qwen3.5-4B model is enabled for SiliconFlow")
         config = kwargs.pop("config", None)
         if config is None:
-            raise ValueError("config is required for GLM compatibility mode")
+            raise ValueError(f"config is required for {self._label} compatibility mode")
 
-        endpoint = self._settings.GLM_BASE_URL.rstrip("/")
+        endpoint = getattr(self._settings, f"{self._prefix}_BASE_URL").rstrip("/")
         if not endpoint.endswith("/chat/completions"):
             endpoint = f"{endpoint}/chat/completions"
 
         payload = self._build_payload(model=model, contents=contents, config=config, kwargs=kwargs)
         headers = {
-            "Authorization": f"Bearer {self._settings.GLM_API_KEY.get_secret_value()}",
+            "Authorization": (
+                f"Bearer {getattr(self._settings, f'{self._prefix}_API_KEY').get_secret_value()}"
+            ),
             "Content-Type": "application/json",
         }
 
-        request_timeout = float(self._settings.GLM_REQUEST_TIMEOUT_SECONDS)
+        request_timeout = float(getattr(self._settings, f"{self._prefix}_REQUEST_TIMEOUT_SECONDS"))
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(request_timeout, connect=min(30.0, request_timeout))
         ) as client:
             try:
-                response = await client.post(endpoint, headers=headers, json=payload)
-            except httpx.TimeoutException as err:
+                async with asyncio.timeout(request_timeout):
+                    response = await client.post(endpoint, headers=headers, json=payload)
+            except (httpx.TimeoutException, TimeoutError) as err:
                 raise TimeoutError(
-                    f"GLM request timed out after {request_timeout:g} seconds "
+                    f"{self._label} request timed out after {request_timeout:g} seconds "
                     f"({type(err).__name__})"
                 ) from err
             if response.is_error:
@@ -1365,6 +1408,22 @@ def apply_glm_patch(settings: Any):
 
 def apply_llm_patch(settings: Any):
     provider = settings.LLM_PROVIDER.lower()
+    if provider == "siliconflow":
+        if settings.SILICONFLOW_API_KEY is None:
+            logger.error("SILICONFLOW_API_KEY is empty; configure it in GitHub Actions Secrets")
+            return
+        from google import genai
+
+        # Both services use chat/completions; share image transport and schema parsing.
+        genai.Client = GLMCompatibleGenAIClient
+        if not _limit_glm_provider_attempts():
+            raise RuntimeError("Could not configure the SiliconFlow request retry budget")
+        logger.info(
+            "SiliconFlow adapter active | model={} | base_url={}",
+            settings.SILICONFLOW_MODEL,
+            settings.SILICONFLOW_BASE_URL,
+        )
+        return
     if provider == "glm":
         if not settings.GLM_API_KEY:
             logger.error("LLM provider misconfigured | LLM_PROVIDER=glm but GLM_API_KEY is empty")
