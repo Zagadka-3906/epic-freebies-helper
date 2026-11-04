@@ -13,6 +13,11 @@
 
 [🇨🇳 中文文档](README.md) | [🇺🇸 English](README.en.md)
 
+> 本 Fork 已切换为硅基流动免费多模态模型 `Qwen/Qwen3.5-4B`。
+> 配置 `SILICONFLOW_API_KEY`、`EPIC_EMAIL`、`EPIC_PASSWORD` 后运行 Actions。
+> 当前工作流忽略旧 GLM 配置；下方 GLM/Gemini 部分为保留的上游说明。
+> 配置和本次稳定性修复详见 [硅基流动配置](docs/siliconflow-setup.md)。
+
 **Epic 周免游戏领取助手** 面向普通用户，默认运行在 GitHub Actions 上。你不需要服务器，不需要本地常驻环境，也不用额外部署；只要有 GitHub 账号，按文档完成配置后就可以开始使用。
 
 这个项目最核心的特点很直接：**完全免费**。

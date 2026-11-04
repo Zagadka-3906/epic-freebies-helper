@@ -135,6 +135,7 @@ def _is_camoufox_bootstrap_error(err: Exception) -> bool:
         marker in message
         for marker in (
             "camoufox is not installed",
+            "unknown property",
             "api.github.com/repos/daijro/camoufox/releases",
             "rate limit exceeded",
             "profile was last used with a newer version",

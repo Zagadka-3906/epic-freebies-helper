@@ -1341,3 +1341,11 @@
   - 计数题提示改为方向无关；通过重复数量徽标识别参考条方向并约束另一侧网格。所有点选答案在缓存和点击前验证挑战边界，计数题额外验证可点击网格，越界答案直接拒绝。
   - 无效的标量拖拽坐标提前报告为结构错误；新增浏览器请求头、超时信息、重试预算、左右参考条和越界坐标回归覆盖。
   - 本地定向测试 `35 passed`，完整测试 `60 passed`，Ruff、变更文件 Black 和 `git diff --check` 均通过。
+
+### 2026-11-04 修复 Actions 环境与会话同步，切换硅基流动免费模型
+
+- 现象：最近 10 条 Actions 记录中 8 次失败；最新一次因 Ubuntu 26.04 不支持锁定的 Playwright Firefox 而失败，其他记录存在 GLM 读取超时、验证码反复失败、登录后商城状态暂为 false、Camoufox 配置属性不兼容，以及验证码目录名含冒号导致 artifact 上传失败。
+- 根因判断：ubuntu-latest 和动态浏览器下载使环境漂移；商城 false 状态立即抛错绕过 45 秒等待；免费路线缺少独立服务商配置。用户要求改用硅基流动免费模型。
+- 改动文件：app/settings.py、app/extensions/llm_adapter.py、app/services/epic_authorization_service.py、app/services/browser_context.py、.github/workflows/epic-gamer.yml、scripts/install_camoufox.py、scripts/package_runtime.py、.env.example、README.md、README.en.md、docs/siliconflow-setup.md、本维护日志。
+- 处理结果：新增 siliconflow 独立配置，共用 OpenAI chat/completions 传输和结构解析，默认 Qwen/Qwen3.5-4B，关闭深度思考，45 秒请求时限、最多两次请求，并限制免费路线的全部模型名，禁止收费或 GLM 回退；Actions 明确选择该路线，忽略旧 GLM 配置。固定 Ubuntu 24.04、冻结依赖、安装 Camoufox 135.0.1-beta.24，并为已知配置属性异常启用 Firefox 降级。商城会话继续等待并探测账号状态；调试文件采用可移植路径打包 ZIP 后上传。
+- 验证：Python AST 和 YAML 解析、锁定版本 Ruff 默认规则、Black、git diff --check、配置导入及四条模型路由检查、scripts/check_hcaptcha_contract.py 均通过。依照 AGENTS.md 未执行测试套件。云端真实接口及领取结果将记录在后续条目。
